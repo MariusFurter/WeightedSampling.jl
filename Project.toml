@@ -3,7 +3,17 @@ uuid = "e5b4febb-f41c-4386-84f4-e73e26fd4cda"
 authors = ["Marius Furter"]
 version = "1.0.0-DEV"
 
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+RNGPool = "c7fc2d14-d53c-5e81-ac30-66aba9c03525"
+SequentialMonteCarlo = "8c675823-c5d5-50f8-acb2-29aff48dfc1d"
+
 [compat]
+Distributions = "0.25.120"
+MacroTools = "0.5.16"
+RNGPool = "2.0.0"
+SequentialMonteCarlo = "0.6.2"
 julia = "1.6.7"
 
 [extras]

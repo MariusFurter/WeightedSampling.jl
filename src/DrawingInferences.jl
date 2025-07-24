@@ -1,5 +1,8 @@
 module DrawingInferences
 
-# Write your package code here.
+export WeightedSampler, FKStep, FKModel, variables, fk
+
+include("smc.jl")
+include("dsl.jl")
 
 end
