@@ -2,17 +2,6 @@ using SequentialMonteCarlo
 using RNGPool
 
 
-
-"""
-    WSampler(inputs::Vector{Symbol}, outputs::Vector{Symbol}, sampler::Function, sampler_lpdf::Function, weighter::Function)
-
-A weighted sampler consists of
-    - `inputs`: input variable names
-    - `outputs`: output variable names
-    - `sampler`: a Markov kernel from inputs to outputs
-    - `sampler_lpdf`: a function that computes the log probability density function of the sampled values
-    - `weighter`: a function that computes the weights for the samples
-"""
 struct WeightedSampler{S,L,W}
     output_types::Vector{DataType} # Types of the outputs, must be subtypes of Number
     sampler::S # Callable that takes inputs and an RNG and returns a sample
@@ -31,11 +20,6 @@ struct FKStep{S,L,W}
     wsampler::WeightedSampler{S,L,W}
 end
 
-"""
-    FKModel
-
-Feynman-Kac model is a collection (Vector or Tuple) of FKStep objects.
-"""
 struct FKModel{T<:Union{AbstractVector{<:FKStep},Tuple{Vararg{FKStep}}}}
     steps::T
 end
@@ -92,7 +76,7 @@ mutable struct GenericParticle{T<:NamedTuple}
     GenericParticle{T}() where {T<:NamedTuple} = new{T}(T(Tuple(zero(fieldtype(T, i)) for i in 1:fieldcount(T))))
 end
 
-function makeSMCModel(fk)
+function SequentialMonteCarlo.SMCModel(fk::FKModel)
     T = length(fk)
 
     # Collect all unique variables and their types from the model

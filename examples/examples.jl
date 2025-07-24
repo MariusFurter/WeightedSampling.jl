@@ -34,7 +34,7 @@ end
 
 
 @time fk = randomWalkModel(1000)
-@time model = makeSMCModel(fk)
+@time model = SMCModel(fk)
 
 N_particles = 2^10
 nthreads = 1# Threads.nthreads()
