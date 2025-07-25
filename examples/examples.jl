@@ -40,18 +40,17 @@ smcio = SMCIO{model.particle,model.pScratch}(N_particles, length(fk), nthreads, 
 ### Full code
 
 @fk function randomWalkModel(T::Int64)
-    x = initialState()
+    x_0 = initialState()
     for i in 1:T
-        x = randomWalkKernel(x)
+        x_{i} = randomWalkKernel(x_{i - 1})
     end
 end
 
-
-@time fk = randomWalkModel(100)
+@time fk = randomWalkModel(10)
 @time model = SMCModel(fk)
 
 N_particles = 2^10
-nthreads = 1# Threads.nthreads()
+nthreads = 1 #Threads.nthreads()
 fullOutput = false
 essThreshold = 2.0
 

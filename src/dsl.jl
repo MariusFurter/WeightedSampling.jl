@@ -5,20 +5,47 @@ function extract_assignments(body)
     for expr in body
         if @capture(expr, _ = _)
             push!(assignments, expr)
-        elseif @capture(expr, for _var_ in start_:stop_
+        elseif @capture(expr, for loop_var_ in start_:stop_
             loop_body__
         end) ||
-               @capture(expr, for _var_ = start_:stop_
+               @capture(expr, for loop_var_ = start_:stop_
             loop_body__
         end)
             # Extract assignments from loop body and expand for each iteration
             loop_assignments = filter(ex -> @capture(ex, _ = _), loop_body)
-            for _ in eval(start):eval(stop)
-                append!(assignments, loop_assignments)
+            for i in eval(start):eval(stop)
+                # For each iteration, substitute the loop variable and evaluate curly brace expressions
+                substituted_assignments = map(loop_assignments) do assignment
+                    interpolate_loop_braces(assignment, loop_var, i)
+                end
+                append!(assignments, substituted_assignments)
             end
+        else
+            error("ParseError: Expression must be an assignment or loop")
         end
     end
     return assignments
+end
+
+function interpolate_loop_braces(expr, loop_var, loop_value)
+    MacroTools.postwalk(expr) do x
+        if x isa Symbol && x == loop_var
+            # Replace loop variable with its current value
+            return loop_value
+        elseif @capture(x, var_name_{index_})
+            # Handle variable names with curly braces like x_{i} or x_{i-1}
+            # First substitute the loop variable in the index expression
+            substituted_index = MacroTools.postwalk(index) do y
+                (y isa Symbol && y == loop_var) ? loop_value : y
+            end
+            # Evaluate the index expression
+            evaluated_index = eval(substituted_index)
+            # Create new symbol with evaluated index
+            return Symbol("$(var_name)$(evaluated_index)")
+        else
+            return x
+        end
+    end
 end
 
 function fkstep(assignment)
@@ -70,9 +97,22 @@ macro fk(expr)
         @capture(expr, function name_()
             body__
         end) ||
-        error("@fk macro expects a function definition")
+        error("@fk expects a function definition")
 
     param_names = [arg isa Symbol ? arg : arg.args[1] for arg in args]
+
+    ### Validation: function body must be well-formed Julia code
+    try
+        # Create a temporary function definition to test syntax
+        temp_func = quote
+            function $(gensym("temp_$(name)_validation"))($(args...))
+                $(body...)
+            end
+        end
+        eval(temp_func)
+    catch e
+        error("@fk input is not well-formed Julia code: $e")
+    end
 
     return esc(quote
         function $name($(args...))

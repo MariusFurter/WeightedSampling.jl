@@ -1,12 +1,6 @@
 using SequentialMonteCarlo
 using RNGPool
 
-struct WeightedSampler{S,W,O}
-    sampler::S
-    weighter::W
-    output_type::O
-end
-
 struct FKStep{I,S,W}
     inputs::I
     output::Symbol
@@ -18,6 +12,28 @@ end
 ### FKModel
 struct FKModel{T<:Union{AbstractVector{<:FKStep},Tuple{Vararg{FKStep}}}}
     steps::T
+
+    function FKModel(steps::T) where {T<:Union{AbstractVector{<:FKStep},Tuple{Vararg{FKStep}}}}
+        validate_step_dependencies(steps)
+        new{T}(steps)
+    end
+end
+
+function validate_step_dependencies(steps)
+    available_outputs = Set{Symbol}()
+
+    for (i, step) in enumerate(steps)
+        # Check that all inputs for this step are available from previous steps
+        missing_inputs = setdiff(Set(step.inputs), available_outputs)
+
+        if !isempty(missing_inputs)
+            missing_str = join(missing_inputs, ", ")
+            error("FKModel validation error: Step $i uses undefined variables: $missing_str. " *
+                  "These variables must be outputs of previous steps.")
+        end
+        # Add this step's output to the available outputs
+        push!(available_outputs, step.output)
+    end
 end
 
 Base.length(fk::FKModel) = length(fk.steps)
@@ -48,10 +64,6 @@ mutable struct GenericParticle{T<:NamedTuple}
     GenericParticle{T}() where {T<:NamedTuple} = new{T}(T(Tuple(zero(fieldtype(T, i)) for i in 1:fieldcount(T))))
 end
 
-
-# ToDo: Make work for arbitrary variables
-# Then: Examples + Convenience functions
-# ToDo: Variable interpolation in loops.
 function SequentialMonteCarlo.SMCModel(fk::FKModel)
     T = length(fk)
 
@@ -81,7 +93,7 @@ function SequentialMonteCarlo.SMCModel(fk::FKModel)
 end
 
 
-### Custom show methods for SMCModel to avoid verbose type printing
+# Custom show methods for SMCModel to avoid verbose type printing
 Base.show(io::IO, model::SequentialMonteCarlo.SMCModel) = print(io, "SMCModel(T=$(model.maxn))")
 
 function Base.show(io::IO, ::MIME"text/plain", model::SequentialMonteCarlo.SMCModel)
