@@ -1,29 +1,43 @@
 using DrawingInferences
 using Distributions
 using BenchmarkTools
+using Random
+using MacroTools
 
-function makeInitialState()
-    output_types = [Float64]
-    kernel = () -> Normal(0.0, 1.0)
-    sampler = (rng) -> rand(rng, kernel())
-    lpdf = () -> x -> logpdf(kernel(), x)
-    weighter = x -> 0.0
-    return WeightedSampler(output_types, sampler, lpdf, weighter)
-end
+### Hand code steps
 
-initialState = makeInitialState()
+initialState = WeightedSampler(
+    (rng) -> randn(rng),
+    (x::Float64) -> 0.0,
+    () -> Float64,
+)
 
-function makeRandomWalkKernel()
-    output_types = [Float64]
-    kernel = x -> Normal(x, 1.0)
-    sampler = (x, rng) -> rand(rng, kernel(x))
-    lpdf = xin -> xout -> logpdf(kernel(xin), xout)
-    weighter = x -> 0.0
-    return WeightedSampler(output_types, sampler, lpdf, weighter)
-end
+initialStep = @fkstep x = initialState()
 
-randomWalkKernel = makeRandomWalkKernel()
+# Create instance with WeightedSampler
+randomWalkKernel = WeightedSampler(
+    (x::Float64, rng) -> rand(rng, Normal(x, 1)),
+    (x::Float64) -> 0.0,
+    () -> Float64,
+)
 
+randomStep = @fkstep x = randomWalkKernel(x)
+
+fk = FKModel((initialStep, (randomStep for _ in 1:10)...))
+
+model = SMCModel(fk)
+
+N_particles = 2^10
+nthreads = 1# Threads.nthreads()
+fullOutput = false
+essThreshold = 2.0
+
+smcio = SMCIO{model.particle,model.pScratch}(N_particles, length(fk), nthreads, fullOutput, essThreshold)
+
+@time smc!(model, smcio)
+
+
+### Full code
 
 @fk function randomWalkModel(T::Int64)
     x = initialState()
@@ -33,7 +47,7 @@ randomWalkKernel = makeRandomWalkKernel()
 end
 
 
-@time fk = randomWalkModel(1000)
+@time fk = randomWalkModel(100)
 @time model = SMCModel(fk)
 
 N_particles = 2^10
