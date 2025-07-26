@@ -7,7 +7,8 @@ using MacroTools
 ### Hand code steps
 
 initialState = WeightedSampler(
-    (rng) -> randn(rng),
+    (rng) -> rand(rng, Normal(0, 1)),
+    () -> (x::Float64) -> logpdf(Normal(0, 1), x),
     (x::Float64) -> 0.0,
     () -> Float64,
 )
@@ -17,6 +18,7 @@ initialStep = @fkstep x = initialState()
 # Create instance with WeightedSampler
 randomWalkKernel = WeightedSampler(
     (x::Float64, rng) -> rand(rng, Normal(x, 1)),
+    (x::Float64) -> (z::Float64) -> logpdf(Normal(x, 1), z),
     (x::Float64) -> 0.0,
     () -> Float64,
 )
