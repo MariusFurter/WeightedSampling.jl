@@ -7,7 +7,7 @@ function get_variables(expr)
         if e isa Symbol
             push!(vars, e)
         elseif e isa Expr
-            if e.head == :call
+            if e.head === :call
                 for arg in e.args[2:end]  # Skip the function name
                     recursive_walk(arg)
                 end
@@ -21,6 +21,18 @@ function get_variables(expr)
 
     recursive_walk(expr)
     return collect(vars)
+end
+
+function replace_refs(expr)
+    MacroTools.postwalk(expr) do e
+        if e isa Expr && e.head === :ref  # Handle indexed variables like x[i] or x{i}
+            return Symbol("$(e.args[1])[$(e.args[2])]")
+        elseif e isa Expr && e.head === :curly  # Handle variables with curly braces like x{i}
+            return Symbol("$(e.args[1]){$(e.args[2])}")
+        else
+            return e
+        end
+    end
 end
 
 function variables_to_particle(vars, expr)
@@ -54,12 +66,17 @@ function capture_lhs(expr)
 end
 
 function process_args(args)
-    inputs = map(get_variables, args)
-    inputs = reduce(union, inputs, init=Symbol[])
+    inputs = []
 
     args = map(args) do arg
-        variables_to_particle(inputs, arg)
+        arg = replace_refs(arg)
+        arg_inputs = get_variables(arg)
+        push!(inputs, arg_inputs)
+        variables_to_particle(arg_inputs, arg)
     end
+
+    inputs = reduce(union, inputs, init=Symbol[])
+
     return inputs, args
 end
 
@@ -81,13 +98,12 @@ function assignment_to_FKStep(expr)
     return FKStep(inputs, output, output_type, sampler, weighter)
 end
 
-function sampling_to_FKStep(expr, mod)
+function sampling_to_FKStep(expr)
     @capture(expr, lhs_ ~ f_(args__)) || error("Expression must be a statement `x ~ sampler(args)`")
 
     output, output_type = capture_lhs(lhs)
 
     inputs, args = process_args(args)
-
 
     sampler_code = quote
         let ws = $f  # This binds the instance WeightedSampler into the definition and allows the compiler to optimize out any allocations that would result from calling it from the outside.
@@ -99,7 +115,7 @@ function sampling_to_FKStep(expr, mod)
         end
     end
 
-    sampler = Core.eval(mod, sampler_code)
+    sampler = Core.eval(Main, sampler_code)
 
     weighter_code = quote
         let ws = $f
@@ -109,16 +125,12 @@ function sampling_to_FKStep(expr, mod)
         end
     end
 
-    weighter = Core.eval(mod, weighter_code)
+    weighter = Core.eval(Main, weighter_code)
 
     return FKStep(inputs, output, output_type, sampler, weighter)
 end
 
-macro sampling_to_FKStep(expr)
-    return esc(sampling_to_FKStep(expr, __module__))
-end
-
-function observe_to_FKStep(expr, mod)
+function observe_to_FKStep(expr)
     @capture(expr, lhs_ -> f_(args__)) || error("Expression must be an observation `x -> sampler(args)`")
 
 
@@ -143,20 +155,20 @@ function observe_to_FKStep(expr, mod)
         end
     end
 
-    weighter = Core.eval(mod, weighter_code)
+    weighter = Core.eval(Main, weighter_code)
 
     return FKStep(inputs, output, output_type, sampler, weighter)
 end
 
-function extract_steps(body, mod)
+function extract_steps(body)
     steps = FKStep[]
     for expr in body
         if @capture(expr, _ = _)
             push!(steps, assignment_to_FKStep(expr))
         elseif @capture(expr, _ ~ f_(args__))
-            push!(steps, sampling_to_FKStep(expr, mod))
+            push!(steps, sampling_to_FKStep(expr))
         elseif @capture(expr, _ -> f_(args__))
-            push!(steps, observe_to_FKStep(expr, mod))
+            push!(steps, observe_to_FKStep(expr))
         elseif @capture(expr, for loop_var_ in start_:stop_
             loop_body__
         end) ||
@@ -167,7 +179,7 @@ function extract_steps(body, mod)
             for i in eval(start):eval(stop)
                 map(loop_body) do step
                     processed_step = process_loop_statement(step, loop_var, i)
-                    push!(steps, sampling_to_FKStep(processed_step, mod))
+                    push!(steps, sampling_to_FKStep(processed_step))
                 end
             end
         else
@@ -181,9 +193,8 @@ end
 function simplify_arithmetic(expr)
     if expr isa Number
         return expr
-    end
-    if !(expr isa Expr)
-        return expr # Return symbols and other types as is
+    elseif !(expr isa Expr)
+        return expr
     end
 
     # Recursively simplify arguments
@@ -192,21 +203,17 @@ function simplify_arithmetic(expr)
     # If all arguments are numbers, try to evaluate the expression
     if expr.head == :call && all(x -> x isa Number, args[2:end])
         try
-            # Use a safe, sandboxed evaluation
-            return Core.eval(Main, Expr(expr.head, args...))
+            return eval(Expr(expr.head, args...))
         catch
-            # If evaluation fails, return the expression with simplified args
             return Expr(expr.head, args...)
         end
     end
 
-    # Return the expression with simplified arguments
     return Expr(expr.head, args...)
 end
 
 function process_loop_statement(loop_body, loop_var, loop_value)
     MacroTools.postwalk(loop_body) do expr
-        @show expr
         if expr isa Symbol && expr == loop_var
             return loop_value
         elseif @capture(expr, var_name_[index_])
@@ -230,9 +237,24 @@ macro model(expr)
         end) ||
         error("Expression must be a function definition")
 
-    steps = extract_steps(body, __module__)
+    param_names = [arg isa Symbol ? arg : arg.args[1] for arg in args]
 
     return esc(quote
-        $name = FKModel($steps) # Does not impact allocations to leave as vector.
+        function $name($(args...))
+            param_values = [$(param_names...)]
+
+            # Substitute parameter values in the function body
+            substituted_body = map($body) do expr
+                $MacroTools.postwalk(expr) do x
+                    (x isa Symbol && x in $param_names) ?
+                    param_values[findfirst(==(x), $param_names)] : x
+                end
+            end
+
+            steps = $DrawingInferences.extract_steps(substituted_body)
+
+
+            return $DrawingInferences.FKModel(steps)
+        end
     end)
 end

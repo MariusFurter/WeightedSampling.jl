@@ -31,26 +31,13 @@ function run_fk(fk)
     @time smc!(model, smcio)
 end
 
-@time @model function randomWalkModel()
+@time @model function randomWalkModel(T::Int64)
     x[0]::Float64 ~ initialState()
-    for i in 1:10
+    for i in 1:T
         x[i]::Float64 ~ randomWalkKernel(x[i-1])
     end
 end
 
-loop_body = quote
-    x[i]::Float64 ~ randomWalkKernel(x[y[i-1]])
-end
+fk = randomWalkModel(2)
 
-
-body = [loop_body]
-
-loop_steps = DrawingInferences.extract_steps(body, Main)
-
-DrawingInferences.process_loop_statement(loop_body, :i, 5)
-
-DrawingInferences.@sampling_to_FKStep x[i]::Float64 ~ randomWalkKernel(x[i])
-
-fk = randomWalkModel
-fk[1]
 run_fk(fk)
