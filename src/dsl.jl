@@ -1,138 +1,238 @@
 using MacroTools
 
-function extract_assignments(body)
-    assignments = []
+function get_variables(expr)
+    vars = Set{Symbol}()
+
+    function recursive_walk(e)
+        if e isa Symbol
+            push!(vars, e)
+        elseif e isa Expr
+            if e.head == :call
+                for arg in e.args[2:end]  # Skip the function name
+                    recursive_walk(arg)
+                end
+            else
+                for arg in e.args
+                    recursive_walk(arg)
+                end
+            end
+        end
+    end
+
+    recursive_walk(expr)
+    return collect(vars)
+end
+
+function variables_to_particle(vars, expr)
+    MacroTools.postwalk(expr) do x
+        x in vars ? :(particle[$(QuoteNode(x))]) : x
+    end
+end
+
+function capture_lhs(expr)
+
+    function validate_output(output)
+        output isa Symbol ||
+            @capture(output, output_symbol_[index_]) ||
+            @capture(output, output_symbol_{index_}) ||
+            error("Left-hand side must be a variable name `x` or an indexed variable `x[i]` or `x{i}`")
+    end
+
+    if @capture(expr, output_::output_type_)
+        if validate_output(output)
+            output = Symbol(output)
+        end
+        output_type = eval(output_type)
+        @assert output_type isa DataType "Output type must be a DataType"
+
+    elseif validate_output(expr)
+        output = Symbol(expr)
+        output_type = Any
+    end
+
+    return output, output_type
+end
+
+function process_args(args)
+    inputs = map(get_variables, args)
+    inputs = reduce(union, inputs, init=Symbol[])
+
+    args = map(args) do arg
+        variables_to_particle(inputs, arg)
+    end
+    return inputs, args
+end
+
+function assignment_to_FKStep(expr)
+    @capture(expr, lhs_ = rhs_) || error("Expression must be an assignment `x = expr`")
+
+    output, output_type = capture_lhs(lhs)
+
+    inputs = get_variables(rhs)
+    rhs = variables_to_particle(inputs, rhs)
+
+    sampler = (particle, rng) -> begin
+        output_val = NamedTuple{(output,)}((eval(rhs),))
+        return merge(particle, output_val)
+    end
+
+    weighter = nothing
+
+    return FKStep(inputs, output, output_type, sampler, weighter)
+end
+
+function sampling_to_FKStep(expr, mod)
+    @capture(expr, lhs_ ~ f_(args__)) || error("Expression must be a statement `x ~ sampler(args)`")
+
+    output, output_type = capture_lhs(lhs)
+
+    inputs, args = process_args(args)
+
+
+    sampler_code = quote
+        let ws = $f  # This binds the instance WeightedSampler into the definition and allows the compiler to optimize out any allocations that would result from calling it from the outside.
+            (particle, rng) -> begin
+                sampled_value = ws.sampler($(args...), rng)
+                output_val = NamedTuple{($(QuoteNode(output)),)}((sampled_value,))
+                return merge(particle, output_val)
+            end
+        end
+    end
+
+    sampler = Core.eval(mod, sampler_code)
+
+    weighter_code = quote
+        let ws = $f
+            (particle) -> begin
+                return ws.weighter($(args...), particle[$(QuoteNode(output))])
+            end
+        end
+    end
+
+    weighter = Core.eval(mod, weighter_code)
+
+    return FKStep(inputs, output, output_type, sampler, weighter)
+end
+
+macro sampling_to_FKStep(expr)
+    return esc(sampling_to_FKStep(expr, __module__))
+end
+
+function observe_to_FKStep(expr, mod)
+    @capture(expr, lhs_ -> f_(args__)) || error("Expression must be an observation `x -> sampler(args)`")
+
+
+    lhs_vars = get_variables(lhs)
+    lhs = variables_to_particle(lhs_vars, lhs)
+
+    output = :nothing
+    output_type = Nothing
+    sampler = nothing
+
+    inputs, args = process_args(args)
+
+    weighter_code = quote
+        let ws = $f
+            (particle) -> begin
+                if ws.weighter === nothing
+                    return ws.logpdf($(args...), $lhs)
+                else
+                    return ws.logpdf($(args...), $lhs) + ws.weighter($(args...), $lhs)
+                end
+            end
+        end
+    end
+
+    weighter = Core.eval(mod, weighter_code)
+
+    return FKStep(inputs, output, output_type, sampler, weighter)
+end
+
+function extract_steps(body, mod)
+    steps = FKStep[]
     for expr in body
         if @capture(expr, _ = _)
-            push!(assignments, expr)
+            push!(steps, assignment_to_FKStep(expr))
+        elseif @capture(expr, _ ~ f_(args__))
+            push!(steps, sampling_to_FKStep(expr, mod))
+        elseif @capture(expr, _ -> f_(args__))
+            push!(steps, observe_to_FKStep(expr, mod))
         elseif @capture(expr, for loop_var_ in start_:stop_
             loop_body__
         end) ||
                @capture(expr, for loop_var_ = start_:stop_
             loop_body__
         end)
-            # Extract assignments from loop body and expand for each iteration
-            loop_assignments = filter(ex -> @capture(ex, _ = _), loop_body)
+
             for i in eval(start):eval(stop)
-                # For each iteration, substitute the loop variable and evaluate curly brace expressions
-                substituted_assignments = map(loop_assignments) do assignment
-                    interpolate_loop_braces(assignment, loop_var, i)
+                map(loop_body) do step
+                    processed_step = process_loop_statement(step, loop_var, i)
+                    push!(steps, sampling_to_FKStep(processed_step, mod))
                 end
-                append!(assignments, substituted_assignments)
             end
         else
-            error("ParseError: Expression must be an assignment or loop")
+            error("ParseError: Expression must be a statement or loop")
         end
     end
-    return assignments
+    return steps
 end
 
-function interpolate_loop_braces(expr, loop_var, loop_value)
-    MacroTools.postwalk(expr) do x
-        if x isa Symbol && x == loop_var
-            # Replace loop variable with its current value
+
+function simplify_arithmetic(expr)
+    if expr isa Number
+        return expr
+    end
+    if !(expr isa Expr)
+        return expr # Return symbols and other types as is
+    end
+
+    # Recursively simplify arguments
+    args = [simplify_arithmetic(arg) for arg in expr.args]
+
+    # If all arguments are numbers, try to evaluate the expression
+    if expr.head == :call && all(x -> x isa Number, args[2:end])
+        try
+            # Use a safe, sandboxed evaluation
+            return Core.eval(Main, Expr(expr.head, args...))
+        catch
+            # If evaluation fails, return the expression with simplified args
+            return Expr(expr.head, args...)
+        end
+    end
+
+    # Return the expression with simplified arguments
+    return Expr(expr.head, args...)
+end
+
+function process_loop_statement(loop_body, loop_var, loop_value)
+    MacroTools.postwalk(loop_body) do expr
+        @show expr
+        if expr isa Symbol && expr == loop_var
             return loop_value
-        elseif @capture(x, var_name_{index_})
-            # Handle variable names with curly braces like x_{i} or x_{i-1}
-            # First substitute the loop variable in the index expression
-            substituted_index = MacroTools.postwalk(index) do y
-                (y isa Symbol && y == loop_var) ? loop_value : y
-            end
-            # Evaluate the index expression
-            evaluated_index = eval(substituted_index)
-            # Create new symbol with evaluated index
-            return Symbol("$(var_name)$(evaluated_index)")
+        elseif @capture(expr, var_name_[index_])
+            substituted_index = process_loop_statement(index, loop_var, loop_value)
+            return simplify_arithmetic(expr)
+        elseif @capture(expr, var_name_{index_})
+            substituted_index = process_loop_statement(index, loop_var, loop_value)
+            return simplify_arithmetic(expr)
         else
-            return x
+            return expr
         end
     end
 end
 
-function fkstep(assignment)
-    @capture(assignment, lhs_ = rhs_) || error("Expression must be assignment")
-    @capture(rhs, func_(args__)) || error("Right-hand side must be a function call")
-
-    # Enforce single variable on left side
-    @capture(lhs, output_var_symbol_) || error("Left-hand side must be a single variable name")
-    isa(output_var_symbol, Symbol) || error("Left-hand side must be a single variable name")
-
-    output_var = QuoteNode(output_var_symbol)
-
-    # Convert args to symbols for inputs
-    input_vars = tuple(args...)
-
-    # Return the expression that creates an FKStep
-    return quote
-        let ops = $func
-            # Create particle sampler function
-            particle_sampler = (particle, rng) -> begin
-                sampled_value = ops.sampler($((:(particle.$var) for var in input_vars)...), rng)
-                output = NamedTuple{($output_var,)}((sampled_value,))
-                return merge(particle, output)
-            end
-
-            # Create particle weighter function  
-            particle_weighter = (particle) -> begin
-                return ops.weighter(particle.$(output_var_symbol))
-            end
-
-            # Get output type from the function
-            the_output_type = ops.output_type()
-
-            FKStep($input_vars, $output_var, the_output_type,
-                particle_sampler, particle_weighter)
-        end
-    end
-end
-
-# Keep @fkstep as a convenience macro for direct use
-macro fkstep(expr)
-    return esc(fkstep(expr))
-end
-
-macro fk(expr)
+macro model(expr)
     @capture(expr, function name_(args__)
             body__
         end) ||
         @capture(expr, function name_()
             body__
         end) ||
-        error("@fk expects a function definition")
+        error("Expression must be a function definition")
 
-    param_names = [arg isa Symbol ? arg : arg.args[1] for arg in args]
-
-    ### Validation: function body must be well-formed Julia code
-    try
-        # Create a temporary function definition to test syntax
-        temp_func = quote
-            function $(gensym("temp_$(name)_validation"))($(args...))
-                $(body...)
-            end
-        end
-        eval(temp_func)
-    catch e
-        error("@fk input is not well-formed Julia code: $e")
-    end
+    steps = extract_steps(body, __module__)
 
     return esc(quote
-        function $name($(args...))
-            param_values = [$(param_names...)]
-
-            # Substitute parameter values in the function body
-            substituted_body = map($body) do expr
-                $MacroTools.postwalk(expr) do x
-                    (x isa Symbol && x in $param_names) ?
-                    param_values[findfirst(==(x), $param_names)] : x
-                end
-            end
-
-            # Extract assignments from the substituted body
-            assignments = $DrawingInferences.extract_assignments(substituted_body)
-
-            # Convert each assignment to an FKStep using fkstep function
-            steps = [eval($DrawingInferences.fkstep(assignment)) for assignment in assignments]
-
-            return $DrawingInferences.FKModel(tuple(steps...))
-        end
+        $name = FKModel($steps) # Does not impact allocations to leave as vector.
     end)
 end

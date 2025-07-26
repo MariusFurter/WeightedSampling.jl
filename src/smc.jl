@@ -59,10 +59,33 @@ end
 
 ### SMC Model creation
 
+function initial_value(t::DataType)
+    if t === Any
+        return missing
+    else
+        try
+            return zero(t)
+        catch e
+            error("Initial values for type $t not implemented.")
+        end
+    end
+end
+
 mutable struct GenericParticle{T<:NamedTuple}
     p::T
-    GenericParticle{T}() where {T<:NamedTuple} = new{T}(T(Tuple(zero(fieldtype(T, i)) for i in 1:fieldcount(T))))
+
+    # Initializer for GenericParticle
+    function GenericParticle{T}() where {T<:NamedTuple}
+        num_fields = fieldcount(T)
+        initial_values = Tuple(initial_value(fieldtype(T, i)) for i in 1:num_fields)
+        initial_namedtuple = T(initial_values)
+        return new{T}(initial_namedtuple)
+    end
+
+    GenericParticle(p::T) where {T<:NamedTuple} = new{typeof(p)}(p)
 end
+
+Base.getindex(particle::GenericParticle, key::Symbol) = getproperty(particle.p, key)
 
 function SequentialMonteCarlo.SMCModel(fk::FKModel)
     T = length(fk)
@@ -80,13 +103,19 @@ function SequentialMonteCarlo.SMCModel(fk::FKModel)
     sampler_lookup = Tuple(step.sampler for step in fk.steps)
 
     function M!(newParticle, rng::RNG, p::Int64, particle, ::Nothing)
-        newParticle.p = sampler_lookup[p](particle.p, rng)
+        if sampler_lookup[p] !== nothing
+            newParticle.p = sampler_lookup[p](particle.p, rng)
+        end
     end
 
     weighter_lookup = Tuple(step.weighter for step in fk.steps)
 
     function lG(p::Int64, particle, ::Nothing)
-        return weighter_lookup[p](particle.p)
+        if weighter_lookup[p] === nothing
+            return 0.0
+        else
+            return weighter_lookup[p](particle.p)
+        end
     end
 
     return SMCModel(M!, lG, T, ParticleType, Nothing)
