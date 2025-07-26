@@ -32,12 +32,20 @@ function run_fk(fk)
 end
 
 @time @model function randomWalkModel(T::Int64)
-    x[0]::Float64 ~ initialState()
+    x::Float64 ~ initialState()
     for i in 1:T
-        x[i]::Float64 ~ randomWalkKernel(x[i-1])
+        x::Float64 ~ randomWalkKernel(x)
     end
 end
 
-fk = randomWalkModel(2)
+@time fk = randomWalkModel(1_000) # Compiling takes a while, could be optimized
 
-run_fk(fk)
+@time model = SMCModel(fk)
+N_particles = 2^10
+nthreads = 1 #Threads.nthreads()
+fullOutput = false
+essThreshold = 2.0
+
+@time smcio = SMCIO{model.particle,model.pScratch}(N_particles, length(fk), nthreads, fullOutput, essThreshold)
+
+@time smc!(model, smcio) # Also has a long compilation time, but is somewhat independent of the particle number

@@ -253,7 +253,6 @@ macro model(expr)
 
             steps = $DrawingInferences.extract_steps(substituted_body)
 
-
             return $DrawingInferences.FKModel(steps)
         end
     end)
