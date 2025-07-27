@@ -10,15 +10,13 @@ using MacroTools
 initialState = WeightedSampler(
     (rng) -> randn(rng),
     (x::Float64) -> 0.0,
-    (x::Float64) -> 0.0,
-    () -> Float64
+    (x::Float64) -> 0.0
 )
 
 randomWalkKernel = WeightedSampler(
     (x_in::Float64, rng) -> x_in + randn(rng),
     (x_in::Float64, x_out::Float64) -> 0.0,
-    (x_in::Float64, x_out::Float64) -> 0.0,
-    () -> Float64
+    (x_in::Float64, x_out::Float64) -> 0.0
 )
 
 function run_fk(fk)
