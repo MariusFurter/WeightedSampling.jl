@@ -106,7 +106,7 @@ function sampling_to_FKStep(expr)
     inputs, args = process_args(args)
 
     sampler_code = quote
-        let ws = $f  # This binds the instance WeightedSampler into the definition and allows the compiler to optimize out any allocations that would result from calling it from the outside.
+        let ws = $f  # This binds the instance WeightedSampler into the definition and allows the compiler to optimize out any allocations that would result from calling it from the outside. This does not increase compilation time.
             (particle, rng) -> begin
                 sampled_value = ws.sampler($(args...), rng)
                 output_val = NamedTuple{($(QuoteNode(output)),)}((sampled_value,))

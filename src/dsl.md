@@ -41,4 +41,3 @@ Beware that `->` binds strongly, so you need to use parentheses in statements li
 
 4. Loops `for i in 1:10 ... end`, `for i = 1:10 ... end` containing statements of types 1.-3.
 Should be unrolled during parsing and loop variable interpolated.
-

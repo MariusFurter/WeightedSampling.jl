@@ -62,12 +62,11 @@ end
 function initial_value(t::DataType)
     if t === Any
         return missing
+    elseif t === Float64 || t === Int64 || t === Bool
+        return zero(t)
     else
-        try
-            return zero(t)
-        catch e
-            error("Initial values for type $t not implemented.")
-        end
+        error("Initial values for type $t not implemented.")
+
     end
 end
 
@@ -101,20 +100,21 @@ function SequentialMonteCarlo.SMCModel(fk::FKModel)
     ParticleType = GenericParticle{particle_type}
 
     sampler_lookup = Tuple(step.sampler for step in fk.steps)
+    weighter_lookup = Tuple(step.weighter for step in fk.steps)
 
     function M!(newParticle, rng::RNG, p::Int64, particle, ::Nothing)
-        if sampler_lookup[p] !== nothing
-            newParticle.p = sampler_lookup[p](particle.p, rng)
+        sampler = @inbounds sampler_lookup[p]
+        if sampler !== nothing
+            newParticle.p = sampler(particle.p, rng)
         end
     end
 
-    weighter_lookup = Tuple(step.weighter for step in fk.steps)
-
     function lG(p::Int64, particle, ::Nothing)
-        if weighter_lookup[p] === nothing
+        weighter = @inbounds weighter_lookup[p]
+        if weighter === nothing
             return 0.0
         else
-            return weighter_lookup[p](particle.p)
+            return weighter(particle.p)
         end
     end
 
