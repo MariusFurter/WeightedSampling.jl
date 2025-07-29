@@ -38,10 +38,10 @@ end
     end
 end
 
-@time fk = randomWalkModel(1_000) # Compiling takes a while (4s), could be optimized
+@time fk = randomWalkModel(100) # Compiling takes a while (4s), could be optimized
 
 @time model = SMCModel(fk) # fast 0.1s
-N_particles = 2^20
+N_particles = 2^10
 nthreads = 1 #Threads.nthreads()
 fullOutput = false
 essThreshold = 2.0

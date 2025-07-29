@@ -177,10 +177,10 @@ function extract_steps(body)
         end)
 
             for i in eval(start):eval(stop)
-                map(loop_body) do step
-                    processed_step = process_loop_statement(step, loop_var, i)
-                    push!(steps, sampling_to_FKStep(processed_step))
+                processed_body = map(loop_body) do statement
+                    process_loop_statement(statement, loop_var, i)
                 end
+                push!(steps, extract_steps(processed_body)...)
             end
         else
             error("ParseError: Expression must be a statement or loop")
