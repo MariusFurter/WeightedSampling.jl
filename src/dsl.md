@@ -21,6 +21,11 @@ Validate:
 a. `y` must be variable symbol
 b. `expression` must be well-formed
 
+NEW: Rewrite to
+for particle in particles 
+    particle.y = replaced_expression
+
+
 2. Sampling statements `y ~ f(args)`
 Is processed to a FKStep with
 - inputs= free variables on RHS
@@ -30,6 +35,12 @@ Is processed to a FKStep with
 where `replaced_args` replaces all free variables `x` in `args` with `particle[:x]`
 - weighter= `(particle) -> f.weighter(replaced_args, particle[output])`
 
+NEW: rewrite to
+for (i,particle) in enumerate(particles)
+    val = f.sampler(replaced_args,rng)
+    particle.y = val
+    weight[i] += f.weighter(replaced_args, val)
+    
 3. Observe statements `expr -> f(args)`
 Is processed to a FKStep with
 - inputs= free variables on RHS

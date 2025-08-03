@@ -61,3 +61,4 @@ end
 
 @time run_simulation(particles, rng, (randomWalkSampler=randomWalkSampler, initialStateSampler=initialStateSampler)) # 1000p x 1000t: 13k allocs (independent of particle number, seem entirely due to creating of Symbols and Vals at runtime), 5s compile, 180ms.
 
+#With `Any` in particle type, 1M allocations, 7s compile, 180ms run time
