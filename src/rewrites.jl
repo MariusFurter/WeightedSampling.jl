@@ -1,6 +1,7 @@
 using MacroTools
 using Distributions
 using Random
+using BenchmarkTools
 
 function replace_symbols(expr, particle_sym, exceptions)
     if expr isa Symbol && !(expr in exceptions)
@@ -27,35 +28,37 @@ function capture_lhs(expr)
         error("Left-hand side must be a variable name `x` or an indexed variable `x{i}`")
     end
 
-    #ToDo: Also capture type annotations
-    output_type = Any
-
-    return output_expr, output_type
+    return output_expr
 end
 
 function rewrite_assignment(expr, exceptions)
     @capture(expr, lhs_ = rhs_)
 
-    output_expr, _ = capture_lhs(lhs)
+    output_expr = capture_lhs(lhs)
 
     particle_sym = gensym("particle")
+    i_sym = gensym("i")
     rhs_rewritten = replace_symbols(rhs, particle_sym, exceptions)
 
     quote
-        for $particle_sym in particles.samples
-            val = $(rhs_rewritten)
-            setproperty!($particle_sym, $output_expr, val)
+        let output = $output_expr
+            for ($i_sym, $particle_sym) in enumerate(particles.samples)
+                val = $(rhs_rewritten)
+                setproperty!($particle_sym, output, val)
+                # new_var = NamedTuple{(output,)}((val,))
+                # particles.samples[$i_sym] = merge($particle_sym, new_var)
+            end
         end
-
     end
 end
 
 function rewrite_sampling(expr, exceptions)
     @capture(expr, lhs_ ~ f_(args__))
 
-    output_expr, _ = capture_lhs(lhs)
+    output_expr = capture_lhs(lhs)
 
     particle_sym = gensym("particle")
+    i_sym = gensym("i")
     args_rewritten = map(args) do arg
         replace_symbols(arg, particle_sym, exceptions)
     end
@@ -66,11 +69,14 @@ function rewrite_sampling(expr, exceptions)
             else
                 $f
             end
-            for (i, $particle_sym) in enumerate(particles.samples)
+            output = $output_expr
+            for ($i_sym, $particle_sym) in enumerate(particles.samples)
                 val = kernel.sampler($(args_rewritten...), rng)
-                setproperty!($particle_sym, $output_expr, val)
+                setproperty!($particle_sym, output, val)
+                # new_var = NamedTuple{(output,)}((val,))
+                # particles.samples[$i_sym] = merge($particle_sym, new_var)
                 if kernel.weighter !== nothing
-                    particles.weights[i] += kernel.weighter($(args_rewritten...), val)
+                    particles.weights[$i_sym] += kernel.weighter($(args_rewritten...), val)
                 end
             end
         end
@@ -81,6 +87,7 @@ function rewrite_observe(expr, exceptions)
     @capture(expr, lhs_ -> f_(args__))
 
     particle_sym = gensym("particle")
+    i_sym = gensym("i")
     lhs_rewritten = replace_symbols(lhs, particle_sym, exceptions)
     args_rewritten = map(args) do arg
         replace_symbols(arg, particle_sym, exceptions)
@@ -92,9 +99,9 @@ function rewrite_observe(expr, exceptions)
             else
                 $f
             end
-            for (i, $particle_sym) in enumerate(particles.samples)
+            for ($i_sym, $particle_sym) in enumerate(particles.samples)
                 val = $lhs_rewritten
-                particles.weights[i] += kernel.logpdf($(args_rewritten...), val)
+                particles.weights[$i_sym] += kernel.logpdf($(args_rewritten...), val)
             end
         end
     end
@@ -133,35 +140,6 @@ function build_smc(body, exceptions)
     return code
 end
 
-function extract_variables(body)
-    code = quote
-        variables = Dict{Symbol,DataType}()
-    end
-    for statement in body
-
-        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ ~ f_(args__))
-
-            output_expr, output_type = capture_lhs(lhs)
-            e = quote
-                variables[$output_expr] = $output_type
-            end
-            append!(code.args, e.args)
-
-        elseif @capture(statement, for loop_var_ in start_:stop_
-            loop_body__
-        end)
-
-            e = quote
-                for $loop_var in $start:$stop
-                    $(extract_variables(loop_body))
-                end
-            end
-            append!(code.args, e.args)
-        end
-    end
-    return code
-end
-
 macro parse(expr)
     @capture(expr, function name_()
         body__
@@ -169,10 +147,36 @@ macro parse(expr)
 
     exceptions = Set{Symbol}()
 
+    dummy_sym = gensym("dummy")
+    name! = Symbol(name, "!")
+    particle_name_sym = gensym(Symbol(name, "Particle"))
+
     # Later: replace with default kernels provided by DrawingInferences
     return esc(quote
-        function $name(particles, kernels=nothing, rng=Random.default_rng())
+        # Mutate existing particles 
+        function $name!(particles, kernels=nothing, rng=Random.default_rng())
             $(build_smc(body, exceptions))
+        end
+
+        # Run with a single particle
+        function $name(kernels=nothing, rng=Random.default_rng())
+            $dummy_sym = SMCParticles([DummyParticle()], [0.0])
+            $name!($dummy_sym, kernels, rng)
+            return $dummy_sym
+        end
+
+        # Run create new particles and run
+        function $name(N_particles::Int64, kernels=nothing, rng=Random.default_rng())
+            $dummy_sym = $name(kernels, rng)
+            variables = map(collect($dummy_sym.samples[1].dict)) do (key, value)
+                (key => typeof(value))
+            end |> Dict
+            initial_values = values($dummy_sym.samples[1].dict)
+            make_struct($(QuoteNode(particle_name_sym)), variables)
+            particle_type = $particle_name_sym(initial_values...)
+            particles = SMCParticles([particle_type for _ in 1:N_particles], [0.0 for _ in 1:N_particles])
+            $name!(particles, kernels, rng)
+            return particles
         end
     end)
 end
@@ -182,10 +186,40 @@ struct SMCParticles{P}
     weights::Vector{Float64}
 end
 
+Base.show(io::IO, particles::SMCParticles) = print(io, "SMCParticles with $(length(particles.samples)) samples")
+Base.show(io::IO, ::MIME"text/plain", particles::SMCParticles) = println(io, "SMCParticles with $(length(particles.samples)) samples")
+
 struct SMCKernel{S,L,W}
     sampler::S
     logpdf::L
     weighter::W
+end
+
+struct DummyParticle
+    dict::Dict{Symbol,Any}
+    function DummyParticle()
+        new(Dict{Symbol,Any}())
+    end
+end
+
+function Base.getproperty(p::DummyParticle, key::Symbol)
+    if key === :dict
+        getfield(p, :dict)
+    else
+        get(getfield(p, :dict), key, nothing)
+    end
+end
+Base.setproperty!(p::DummyParticle, key::Symbol, value) = (getfield(p, :dict)[key] = value)
+
+
+function make_struct(name, variables)
+    fields = [:($field::$type) for (field, type) in variables]
+    struct_code = quote
+        mutable struct $name
+            $(fields...)
+        end
+    end
+    Core.eval(Main, struct_code)
 end
 
 initialKernel = SMCKernel(
@@ -202,26 +236,17 @@ walkKernel = SMCKernel(
 
 my_kernels = (initialKernel=initialKernel, walkKernel=walkKernel)
 
-mutable struct XYParticle
-    x::Float64
-    y1::Float64
-    y2::Float64
-end
-
-my_particles = SMCParticles{XYParticle}([XYParticle(0.0, 0.0, 0.0) for _ in 1:1000], [0.0 for _ in 1:1000])
-
 my_rng = Random.default_rng()
 
-@parse function bla!()
-    x ~ initialKernel()
-    for i in 1:100
-        x ~ walkKernel(x)
+@parse function bla()
+    x0 ~ initialKernel()
+    for i in 1:1000
+        x0 ~ walkKernel(x0)
     end
-    5.0 -> walkKernel(x)
 end
 
-@time bla!(my_particles, my_kernels, my_rng)
+@time bla(1000, my_kernels, my_rng)
 
-## Attempt to get variables dynamically. Probably best to parse code in a second way that gets variables and types since this can be executed before runtime.
+## The issue of dynamically create structs surfaces again... Works if called twice.
 
-##Pro dummy run: You also get the types for free.
+## ToDo: Dynamic indices in args
