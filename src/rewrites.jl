@@ -240,12 +240,30 @@ my_rng = Random.default_rng()
 
 @parse function bla()
     x0 ~ initialKernel()
-    for i in 1:1000
-        x0 ~ walkKernel(x0)
+    for i in 1:10_000
+        x{i} ~ walkKernel(x0)
     end
 end
 
-@time bla(1000, my_kernels, my_rng)
+@btime bla(1000, my_kernels, my_rng)
+
+### 100 time-steps + single variable
+### 10^5 particles: 46ms / 450 allocs
+
+
+### 100 time-steps + dynamic variables
+### 10^3 particles: 19ms / 100k allocs
+### 10^4 particles: 72ms / 1M allocs
+### 10^5 particles: 600ms / 10M allocs
+### 10^6 particles: 6s / 100M allocs
+
+### 10k time-steps + single variable
+### 10^2 particles: 5ms / 10k allocs
+### 10^4 particles: 450ms / 10k allocs
+
+### 10k time-steps + dynamic variables
+### 10^2 particles: 21s / 2M allocs
+### 10^3 particles: 51s / 10M allocs
 
 ## The issue of dynamically create structs surfaces again... Works if called twice.
 
