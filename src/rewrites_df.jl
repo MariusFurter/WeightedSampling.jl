@@ -1,0 +1,192 @@
+using MacroTools
+using Distributions
+using Random
+using BenchmarkTools
+using DataFrames
+
+function replace_symbols(expr, exceptions)
+    if expr isa Symbol && !(expr in exceptions)
+        return :(particles[!, $(QuoteNode(expr))])
+    elseif expr isa Expr
+        if expr.head == :call
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols(x, exceptions), expr.args[2:end])...)
+        else
+
+            return Expr(expr.head, map(x -> replace_symbols(x, exceptions), expr.args)...)
+        end
+    else
+        return expr
+    end
+end
+
+function capture_lhs(expr)
+
+    if expr isa Symbol
+        output_expr = QuoteNode(expr)
+    elseif @capture(expr, output_symbol_{index_})
+        output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
+    else
+        error("Left-hand side must be a variable name `x` or an indexed variable `x{i}`")
+    end
+
+    return output_expr
+end
+
+function rewrite_assignment(expr, exceptions)
+    @capture(expr, lhs_ = rhs_)
+
+    output_expr = capture_lhs(lhs)
+    rhs_rewritten = replace_symbols(rhs, exceptions)
+
+    quote
+        particles[!, $output_expr] .= $(rhs_rewritten)
+    end
+end
+
+function rewrite_sampling(expr, exceptions)
+    @capture(expr, lhs_ ~ f_(args__))
+
+    output_expr = capture_lhs(lhs)
+
+    args_rewritten = map(args) do arg
+        replace_symbols(arg, exceptions)
+    end
+
+    quote
+        let kernel = if hasproperty(kernels, $(QuoteNode(f)))
+                kernels.$f
+            else
+                $f
+            end
+            particles[!, $output_expr] .= kernel.sampler.($(args_rewritten...))
+            if kernel.weighter !== nothing
+                particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+            end
+        end
+    end
+end
+
+function rewrite_observe(expr, exceptions)
+    @capture(expr, lhs_ -> f_(args__))
+
+    lhs_rewritten = replace_symbols(lhs, exceptions)
+    args_rewritten = map(args) do arg
+        replace_symbols(arg, exceptions)
+    end
+
+    quote
+        let kernel = if hasproperty(kernels, $(QuoteNode(f)))
+                kernels.$f
+            else
+                $f
+            end
+            particles[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+        end
+    end
+end
+
+function build_smc(body, exceptions)
+    code = quote end
+    for statement in body
+
+        if @capture(statement, lhs_ = rhs_)
+            rewritten_statement = rewrite_assignment(statement, exceptions)
+            append!(code.args, rewritten_statement.args)
+
+        elseif @capture(statement, lhs_ ~ f_(args__))
+            rewritten_statement = rewrite_sampling(statement, exceptions)
+            append!(code.args, rewritten_statement.args)
+
+        elseif @capture(statement, lhs_ -> f_(args__))
+            rewritten_statement = rewrite_observe(statement, exceptions)
+            append!(code.args, rewritten_statement.args)
+
+        elseif @capture(statement, for loop_var_ in start_:stop_
+            loop_body__
+        end)
+
+            push!(exceptions, loop_var)
+            e = quote
+                for $loop_var in $start:$stop
+                    $(build_smc(loop_body, exceptions))
+                end
+            end
+            delete!(exceptions, loop_var)
+            append!(code.args, e.args)
+        end
+    end
+    return code
+end
+
+macro parse(expr)
+    @capture(expr, function name_()
+        body__
+    end) || error("Expression must be a function definition")
+
+    exceptions = Set{Symbol}()
+
+    name! = Symbol(name, "!")
+
+    # Later: replace with default kernels provided by DrawingInferences
+    return esc(quote
+        function $name!(particles, kernels=nothing)
+            $(build_smc(body, exceptions))
+            return nothing
+        end
+    end)
+end
+
+struct SMCKernel{S,L,W}
+    sampler::S
+    logpdf::L
+    weighter::W
+end
+
+initialKernel = SMCKernel(
+    () -> randn(),
+    (x) -> logpdf(Normal(0, 1), x),
+    nothing
+)
+
+walkKernel = SMCKernel(
+    (x_in::Float64) -> x_in + randn(),
+    (x_in::Float64, x_out::Float64) -> logpdf(Normal(x_in, 1), x_out),
+    (x_in::Float64, x_out::Float64) -> 0.0
+)
+
+my_kernels = (initialKernel=initialKernel, walkKernel=walkKernel)
+
+
+my_particles = DataFrame(weights=[1.0 for _ in 1:1000])
+
+@parse function bla()
+    x0 = 0.0
+    for i in 1:100
+        x{i} ~ walkKernel(x0)
+    end
+    5.0 -> walkKernel(x0)
+end
+
+@time bla!(my_particles, my_kernels)
+describe(my_particles)
+### 100 time-steps + single variable
+### 10^5 particles: 46ms / 450 allocs
+
+
+### 100 time-steps + dynamic variables
+### 10^3 particles: 19ms / 100k allocs
+### 10^4 particles: 72ms / 1M allocs
+### 10^5 particles: 600ms / 10M allocs
+### 10^6 particles: 6s / 100M allocs
+
+### 10k time-steps + single variable
+### 10^2 particles: 5ms / 10k allocs
+### 10^4 particles: 450ms / 10k allocs
+
+### 10k time-steps + dynamic variables
+### 10^2 particles: 21s / 2M allocs
+### 10^3 particles: 51s / 10M allocs
+
+## The issue of dynamically create structs surfaces again... Works if called twice.
+
+## ToDo: Dynamic indices in args
