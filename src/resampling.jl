@@ -1,6 +1,6 @@
-```
+"""
 Exponentiate and normalize the log weights in-place.
-```
+"""
 function exp_norm_weights!(weights::Vector{Float64})
     max_weight = maximum(weights)
     weights .= exp.(weights .- max_weight)
@@ -9,9 +9,9 @@ function exp_norm_weights!(weights::Vector{Float64})
     return nothing
 end
 
-```
+"""
 Compute inverse CDF induced by the normalized `weights``. `us`` must be a sorted vector of uniform random samples.
-```
+"""
 function icdf(weights::Vector{Float64}, us::Vector{Float64})
     N = length(weights)
     indices = zeros(Int, N)
@@ -27,9 +27,6 @@ function icdf(weights::Vector{Float64}, us::Vector{Float64})
     return indices
 end
 
-```
-Stratified resampling algorithm on weights.
-```
 function stratified_resample(weights::Vector{Float64})
     N = length(weights)
 
@@ -45,9 +42,9 @@ function stratified_resample(weights::Vector{Float64})
     return indices
 end
 
-```
+"""
 Compute effective sample size percentage (ESS/N) from weights. 
-```
+"""
 function ess_perc(weights::Vector{Float64})
     N = length(weights)
     return 1.0 / (N * sum(weights .^ 2))
@@ -68,14 +65,3 @@ function resample_particles!(particles, ess_perc_min=0.5::Float64)
     end
     return nothing
 end
-
-using DataFrames
-using BenchmarkTools
-
-
-particles_template = DataFrame(x=[n for n in 1:1000], weights=randn(1000))
-
-@btime exp_norm_weights!(particles.weights) setup = (particles = copy(particles_template))
-@btime resample_particles!(particles, 0.0) setup = (particles = copy(particles_template))
-@btime resample_particles!(particles, 1.0) setup = (particles = copy(particles_template))
-particles

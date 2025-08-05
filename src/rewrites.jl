@@ -62,6 +62,7 @@ function rewrite_sampling(expr, exceptions)
             particles[!, $output_expr] .= kernel.sampler.($(args_rewritten...))
             if kernel.weighter !== nothing
                 particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+                $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
             end
         end
     end
@@ -82,6 +83,7 @@ function rewrite_observe(expr, exceptions)
                 $f
             end
             particles[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+            $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
         end
     end
 end
@@ -133,7 +135,7 @@ macro smc(expr)
 
     # Later: replace with default kernels provided by DrawingInferences
     return esc(quote
-        function $name!(particles, kernels=nothing)
+        function $name!(particles, kernels=nothing, ess_perc_min=0.5::Float64)
             $(build_smc(body, exceptions))
             return nothing
         end
