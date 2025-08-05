@@ -1,9 +1,8 @@
 module DrawingInferences
 
-export WeightedSampler, FKStep, FKModel, variables, @model, SMCModel, SMCIO, smc!
+export SMCKernel, @smc
 
+include("rewrites.jl")
 include("samplers.jl")
-include("smc.jl")
-include("dsl.jl")
 
 end

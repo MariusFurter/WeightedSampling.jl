@@ -1,6 +1,7 @@
 using DrawingInferences
 using Distributions
 using CairoMakie
+
 ### Beta-binomial model
 
 function makeBeta11Sampler()
