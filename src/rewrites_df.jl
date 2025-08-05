@@ -10,8 +10,15 @@ function replace_symbols(expr, exceptions)
     elseif expr isa Expr
         if expr.head == :call
             return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols(x, exceptions), expr.args[2:end])...)
-        else
+        elseif expr.head == :curly
+            if @capture(expr, output_symbol_{index_})
+                output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
+                return :(particles[!, $output_expr])
+            else
+                error("Only single expression allowed in curly braces")
+            end
 
+        else
             return Expr(expr.head, map(x -> replace_symbols(x, exceptions), expr.args)...)
         end
     else
@@ -19,8 +26,9 @@ function replace_symbols(expr, exceptions)
     end
 end
 
-function capture_lhs(expr)
+:(particles[!, Symbol("x$(i-1)")])
 
+function capture_lhs(expr)
     if expr isa Symbol
         output_expr = QuoteNode(expr)
     elseif @capture(expr, output_symbol_{index_})
@@ -113,6 +121,9 @@ function build_smc(body, exceptions)
             end
             delete!(exceptions, loop_var)
             append!(code.args, e.args)
+
+        else
+            error("Unsupported statement type: $statement")
         end
     end
     return code
@@ -162,31 +173,11 @@ my_particles = DataFrame(weights=[1.0 for _ in 1:1000])
 @parse function bla()
     x0 = 0.0
     for i in 1:100
-        x{i} ~ walkKernel(x0)
+        x{i} = x{i - 1} + i
+        x{i} ~ walkKernel(x{i - 1})
     end
     5.0 -> walkKernel(x0)
 end
 
 @time bla!(my_particles, my_kernels)
 describe(my_particles)
-### 100 time-steps + single variable
-### 10^5 particles: 46ms / 450 allocs
-
-
-### 100 time-steps + dynamic variables
-### 10^3 particles: 19ms / 100k allocs
-### 10^4 particles: 72ms / 1M allocs
-### 10^5 particles: 600ms / 10M allocs
-### 10^6 particles: 6s / 100M allocs
-
-### 10k time-steps + single variable
-### 10^2 particles: 5ms / 10k allocs
-### 10^4 particles: 450ms / 10k allocs
-
-### 10k time-steps + dynamic variables
-### 10^2 particles: 21s / 2M allocs
-### 10^3 particles: 51s / 10M allocs
-
-## The issue of dynamically create structs surfaces again... Works if called twice.
-
-## ToDo: Dynamic indices in args
