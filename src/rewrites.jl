@@ -94,7 +94,7 @@ function rewrite_sampling(expr, exceptions)
 end
 
 function rewrite_observe(expr, exceptions)
-    @capture(expr, lhs_ -> f_(args__))
+    @capture(expr, lhs_ => f_(args__))
 
     lhs_rewritten = replace_symbols_except(lhs, exceptions)
     args_rewritten = map(args) do arg
@@ -125,7 +125,7 @@ function build_smc(body, exceptions)
             rewritten_statement = rewrite_sampling(statement, exceptions)
             append!(code.args, rewritten_statement.args)
 
-        elseif @capture(statement, lhs_ -> f_(args__))
+        elseif @capture(statement, lhs_ => f_(args__))
             rewritten_statement = rewrite_observe(statement, exceptions)
             append!(code.args, rewritten_statement.args)
 

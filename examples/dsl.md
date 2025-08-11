@@ -41,7 +41,7 @@ for (i,particle) in enumerate(particles)
     particle.y = val
     weight[i] += f.weighter(replaced_args, val)
     
-3. Observe statements `expr -> f(args)`
+3. Observe statements `expr => f(args)`
 Is processed to a FKStep with
 - inputs= free variables on RHS
 - output= none

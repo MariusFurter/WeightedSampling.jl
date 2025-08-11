@@ -6,13 +6,12 @@ using Distributions
 @smc function normal_model()
     x ~ Normal(0, 1)
     y ~ Normal(x, 1)
-    z ~ Normal(y, 1)
+    3 => Normal(y, 1)
     u = sin(x)
 end
 
 samples = normal_model(n_particles=10_000, ess_perc_min=0.5)
-s = 1
-@E(x + s, samples)
+@E((x, y) -> x, samples)
 
 initialKernel = SMCKernel(
     () -> randn(),

@@ -19,11 +19,32 @@ function exp_norm_weights(weights::Vector{Float64})
     return exp_weights ./ sum_exp_weights
 end
 
+"""
+Compute the weighted expectation of an anonymous function `f` with respect to particle samples. Argument names of `f` reference the corresponding particle values.
+"""
+macro E(f, particles)
+    if @capture(f, arg_Symbol -> body_)
+        args = [arg]
+    else
+        @capture(f, (args__,) -> body_) ||
+            error("E macro requires a function of the form (args...) -> expr")
+    end
+
+    body_replaced = DrawingInferences.replace_symbols_in(body, args)
+    return esc(quote
+        let particles = $particles
+            weights = DrawingInferences.exp_norm_weights(particles.weights)
+            values = $body_replaced
+            sum(values .* weights)
+        end
+    end)
+end
+
 
 """
 Compute the weighted expectation of an expression `f` with respect to particle samples. Variable names in `f` that match column names in `particles` will reference the corresponding particle values.
 """
-macro E(f, particles)
+macro E_old(f, particles)
     f_quoted = QuoteNode(f)
 
     return esc(quote

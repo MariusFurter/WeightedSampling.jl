@@ -1,8 +1,3 @@
-using DrawingInferences
-using Distributions
-using Random
-
-
 ### Beta-binomial model where k out of n trials are successes, with T total trials.
 function beta_binomial_test(n, k, T, a, b)
     Random.seed!(42)
@@ -12,13 +7,13 @@ function beta_binomial_test(n, k, T, a, b)
         b = b
         p ~ Beta(a, b)
         for t in 1:T
-            k -> Binomial(n, p)
+            k => Binomial(n, p)
         end
     end
 
     samples = beta_binomial(n, k, T, a, b; n_particles=100_000, ess_perc_min=0.0)
 
-    smc_val = @E(p, samples)
+    smc_val = @E(p -> p, samples)
 
     #Closed form solution
     function p_given_y(n, k, T, a, b)
@@ -29,5 +24,3 @@ function beta_binomial_test(n, k, T, a, b)
 
     isapprox(smc_val, exact_val, atol=1e-2)
 end
-
-beta_binomial_test(10, 8, 10, 1.0, 2.0)
