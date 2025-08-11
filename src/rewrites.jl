@@ -1,4 +1,14 @@
 using MacroTools
+using DataFrames
+
+### Maybe could be made more generic by using `getproperty` and `setproperty!`.
+### Also maybe have SMCKernel operate on vectors.
+
+# Other todos:
+# - Support args
+# - Evidence
+# - Arguments
+# - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
 
 function replace_symbols(expr, exceptions)
     if expr isa Symbol && !(expr in exceptions)
@@ -124,20 +134,55 @@ function build_smc(body, exceptions)
     return code
 end
 
+function inline_kwargs(kwargs)
+    if isempty(kwargs)
+        return nothing
+    else
+        code = quote end
+        for (key, value) in pairs(kwargs)
+            e = quote
+                $key = $value
+            end
+            append!(code.args, e.args)
+        end
+        return code
+    end
+end
+
 macro smc(expr)
-    @capture(expr, function name_()
+    @capture(expr, function name_(args__)
         body__
     end) || error("Expression must be a function definition")
 
-    exceptions = Set{Symbol}()
+    exceptions = Set{Symbol}(args)
 
     name! = Symbol(name, "!")
 
     # Later: replace with default kernels provided by DrawingInferences
     return esc(quote
-        function $name!(particles, kernels=nothing, ess_perc_min=0.5::Float64)
+        function $name!($(args...); particles, kernels=nothing, ess_perc_min=0.5::Float64)
+
+            if kernels === nothing
+                kernels = DrawingInferences.default_kernels
+            else
+                kernels = merge(DrawingInferences.default_kernels, kernels)
+            end
+
             $(build_smc(body, exceptions))
             return nothing
+        end
+
+        function $name($(args...); n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64)
+
+            if kernels === nothing
+                kernels = DrawingInferences.default_kernels
+            else
+                kernels = merge(DrawingInferences.default_kernels, kernels)
+            end
+
+            particles = DrawingInferences.DataFrame(weights=zeros(n_particles))
+            $(build_smc(body, exceptions))
+            return particles
         end
     end)
 end

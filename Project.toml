@@ -4,9 +4,13 @@ authors = ["Marius Furter"]
 version = "1.0.0-DEV"
 
 [deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 
 [compat]
+DataFrames = "1.7.0"
+Distributions = "0.25.120"
 MacroTools = "0.5.16"
 julia = "1.6.7"
 
