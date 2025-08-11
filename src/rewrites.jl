@@ -180,7 +180,6 @@ macro smc(expr)
     end
 
     kwarg_names = extract_kwarg_names(kwargs)
-    @show kwarg_names
 
     exceptions = Set{Symbol}((args..., kwarg_names...))
 

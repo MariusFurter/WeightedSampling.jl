@@ -4,7 +4,7 @@ using DataFrames
 using Distributions
 using MacroTools
 
-export SMCKernel, @smc, @E
+export SMCKernel, @smc, @E, @E_except
 
 include("rewrites.jl")
 include("resampling.jl")

@@ -27,16 +27,35 @@ macro E(f, particles)
     f_quoted = QuoteNode(f)
 
     return esc(quote
-        let p = $particles
-            particle_names = Set(Symbol.(names(p)))
+        let particles = $particles
+            particle_names = Set(Symbol.(names(particles)))
             f_replaced = DrawingInferences.replace_symbols_in($f_quoted, particle_names)
-            weights = DrawingInferences.exp_norm_weights(p.weights)
+            weights = DrawingInferences.exp_norm_weights(particles.weights)
 
-            expectation_func = eval(quote
-                (particles, w) -> sum($(f_replaced) .* w)
-            end)
+            f_func_code = quote
+                (particles) -> $f_replaced
+            end
+            f_func = eval(f_func_code)
 
-            expectation_func(p, weights)
+            f_eval = Base.invokelatest(f_func, particles)
+
+            sum(f_eval .* weights)
         end
     end)
+end
+
+"""
+Compute the weighted expectation of an expression `f` with respect to particle samples. Variable names in `f` not in `exceptions` are interpreted as columns in `particles`.
+"""
+macro E_except(f, particles, exceptions=Symbol[])
+    exceptions = Set(Symbol.(eval(exceptions)))
+    f_replaced = replace_symbols_except(f, exceptions)
+    return esc(
+        quote
+            let particles = $particles
+                weights = DrawingInferences.exp_norm_weights(particles.weights)
+                sum($f_replaced .* weights)
+            end
+        end
+    )
 end

@@ -1,3 +1,8 @@
+using DrawingInferences
+using Distributions
+using Random
+
+
 ### Beta-binomial model where k out of n trials are successes, with T total trials.
 function beta_binomial_test(n, k, T, a, b)
     Random.seed!(42)
@@ -24,3 +29,5 @@ function beta_binomial_test(n, k, T, a, b)
 
     isapprox(smc_val, exact_val, atol=1e-2)
 end
+
+beta_binomial_test(10, 8, 10, 1.0, 2.0)
