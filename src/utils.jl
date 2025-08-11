@@ -19,6 +19,9 @@ function exp_norm_weights(weights::Vector{Float64})
     return exp_weights ./ sum_exp_weights
 end
 
+"""
+Compute (weighted) expectation of the expression `f` wrt particles. The variable names in `f` are interpreted as columns in the `particles` DataFrame.
+"""
 macro E(f, particles)
     f_replaced = replace_symbols(f, Set{Symbol}())
     return quote
