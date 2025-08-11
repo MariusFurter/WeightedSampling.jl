@@ -2,17 +2,15 @@
 ### Also maybe have SMCKernel operate on vectors.
 
 # Other todos:
-# - Support args
 # - Evidence
-# - Arguments
 # - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
 
-function replace_symbols(expr, exceptions)
+function replace_symbols_except(expr, exceptions)
     if expr isa Symbol && !(expr in exceptions)
         return :(particles[!, $(QuoteNode(expr))])
     elseif expr isa Expr
         if expr.head == :call
-            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols(x, exceptions), expr.args[2:end])...)
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_except(x, exceptions), expr.args[2:end])...)
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
@@ -20,9 +18,29 @@ function replace_symbols(expr, exceptions)
             else
                 error("Only single expression allowed in curly braces")
             end
-
         else
-            return Expr(expr.head, map(x -> replace_symbols(x, exceptions), expr.args)...)
+            return Expr(expr.head, map(x -> replace_symbols_except(x, exceptions), expr.args)...)
+        end
+    else
+        return expr
+    end
+end
+
+function replace_symbols_in(expr, to_replace)
+    if expr isa Symbol && expr in to_replace
+        return :(particles[!, $(QuoteNode(expr))])
+    elseif expr isa Expr
+        if expr.head == :call
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_in(x, to_replace), expr.args[2:end])...)
+        elseif expr.head == :curly
+            if @capture(expr, output_symbol_{index_})
+                output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
+                return :(particles[!, $output_expr])
+            else
+                error("Only single expression allowed in curly braces")
+            end
+        else
+            return Expr(expr.head, map(x -> replace_symbols_in(x, to_replace), expr.args)...)
         end
     else
         return expr
@@ -45,7 +63,7 @@ function rewrite_assignment(expr, exceptions)
     @capture(expr, lhs_ = rhs_)
 
     output_expr = capture_lhs(lhs)
-    rhs_rewritten = replace_symbols(rhs, exceptions)
+    rhs_rewritten = replace_symbols_except(rhs, exceptions)
 
     quote
         particles[!, $output_expr] .= $(rhs_rewritten)
@@ -57,7 +75,7 @@ function rewrite_sampling(expr, exceptions)
 
     output_expr = capture_lhs(lhs)
     args_rewritten = map(args) do arg
-        replace_symbols(arg, exceptions)
+        replace_symbols_except(arg, exceptions)
     end
 
     quote
@@ -78,9 +96,9 @@ end
 function rewrite_observe(expr, exceptions)
     @capture(expr, lhs_ -> f_(args__))
 
-    lhs_rewritten = replace_symbols(lhs, exceptions)
+    lhs_rewritten = replace_symbols_except(lhs, exceptions)
     args_rewritten = map(args) do arg
-        replace_symbols(arg, exceptions)
+        replace_symbols_except(arg, exceptions)
     end
 
     quote
@@ -168,7 +186,6 @@ macro smc(expr)
 
     name! = Symbol(name, "!")
 
-    # Later: replace with default kernels provided by DrawingInferences
     return esc(quote
         function $name!($(args...); $(kwargs...), particles, kernels=nothing, ess_perc_min=0.5::Float64)
 
