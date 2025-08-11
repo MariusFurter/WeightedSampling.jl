@@ -1,5 +1,3 @@
-using Distributions
-
 struct SMCKernel{S,L,W}
     sampler::S
     logpdf::L

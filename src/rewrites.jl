@@ -1,6 +1,3 @@
-using MacroTools
-using DataFrames
-
 ### Maybe could be made more generic by using `getproperty` and `setproperty!`.
 ### Also maybe have SMCKernel operate on vectors.
 
@@ -134,33 +131,46 @@ function build_smc(body, exceptions)
     return code
 end
 
-function inline_kwargs(kwargs)
-    if isempty(kwargs)
-        return nothing
-    else
-        code = quote end
-        for (key, value) in pairs(kwargs)
-            e = quote
-                $key = $value
-            end
-            append!(code.args, e.args)
+function extract_kwarg_names(kwargs)
+    kwarg_names = Symbol[]
+    for kwarg in kwargs
+        if @capture(kwarg, name_ = value_)
+            push!(kwarg_names, name)
+        elseif @capture(kwarg, name_Symbol)
+            push!(kwarg_names, name)
+        else
+            error("Unsupported keyword argument: $kwarg")
         end
-        return code
     end
+    return kwarg_names
 end
 
 macro smc(expr)
-    @capture(expr, function name_(args__)
+    if @capture(expr, function name_(args__; kwargs__)
         body__
-    end) || error("Expression must be a function definition")
+    end)
+    elseif @capture(expr, function name_(; kwargs__)
+        body__
+    end)
+        args = Symbol[]
+    elseif @capture(expr, function name_(args__)
+        body__
+    end)
+        kwargs = Expr[]
+    else
+        error("Expression must be a function definition")
+    end
 
-    exceptions = Set{Symbol}(args)
+    kwarg_names = extract_kwarg_names(kwargs)
+    @show kwarg_names
+
+    exceptions = Set{Symbol}((args..., kwarg_names...))
 
     name! = Symbol(name, "!")
 
     # Later: replace with default kernels provided by DrawingInferences
     return esc(quote
-        function $name!($(args...); particles, kernels=nothing, ess_perc_min=0.5::Float64)
+        function $name!($(args...); $(kwargs...), particles, kernels=nothing, ess_perc_min=0.5::Float64)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
@@ -172,7 +182,7 @@ macro smc(expr)
             return nothing
         end
 
-        function $name($(args...); n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64)
+        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels

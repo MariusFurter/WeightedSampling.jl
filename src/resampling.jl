@@ -1,15 +1,4 @@
 """
-Exponentiate and normalize the log weights in-place.
-"""
-function exp_norm_weights!(weights::Vector{Float64})
-    max_weight = maximum(weights)
-    weights .= exp.(weights .- max_weight)
-    sum_exp_weights = sum(weights)
-    weights ./= sum_exp_weights
-    return nothing
-end
-
-"""
 Compute inverse CDF induced by the normalized `weights``. `us`` must be a sorted vector of uniform random samples.
 """
 function icdf(weights::Vector{Float64}, us::Vector{Float64})
