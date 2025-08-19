@@ -2,6 +2,7 @@ using Revise
 using DrawingInferences
 using DataFrames
 using Distributions
+using BenchmarkTools
 
 @smc function normal_model()
     x ~ Normal(0, 1)
@@ -10,8 +11,10 @@ using Distributions
     u = sin(x)
 end
 
-samples = normal_model(n_particles=10_000, ess_perc_min=0.5)
+@time samples, evidence = normal_model(n_particles=10_000, ess_perc_min=0.5)
 @E((x, y) -> x, samples)
+
+### Dynamic-style model
 
 initialKernel = SMCKernel(
     () -> randn(),
@@ -20,25 +23,44 @@ initialKernel = SMCKernel(
 )
 
 walkKernel = SMCKernel(
-    (x_in::Float64) -> x_in + randn(),
-    (x_in::Float64, x_out::Float64) -> logpdf(Normal(x_in, 1), x_out),
+    (x_in) -> x_in + randn(),
+    (x_in, x_out) -> logpdf(Normal(x_in, 1), x_out),
     nothing
 )
 
 @smc function bla()
     x0 = 0.0
-    for i in 1:10_000
-        x{i} = x{i - 1} + i
-        x{i} ~ walkKernel(x{i - 1})
+    for i in 1:1_000
+        x{i} ~ walkKernel(i)
+        i => walkKernel(x{i})
     end
-    0.0 -> walkKernel(x1)
 end
 
 my_kernels = (initialKernel=initialKernel, walkKernel=walkKernel)
-my_particles = DataFrame(weights=[0.0 for _ in 1:10_000])
 
-@time bla!(my_particles, my_kernels, 1.0)
+my_particles, evidence = @time bla(n_particles=1_000, kernels=my_kernels)
 describe(my_particles)
+
+### Beta-Binomial Model Benchmarking
+
+n = 10
+k = 8
+T = 10
+a = 1.0
+b = 2.0
+
+@smc function beta_binomial(n, k, T, a, b)
+    a = a
+    b = b
+    p ~ Beta(a, b)
+    for t in 1:T
+        k => Binomial(n, p)
+    end
+end
+
+samples, evidence = @time beta_binomial(n, k, T, a, b; n_particles=10_000, ess_perc_min=1.0)
+
+smc_p_val = @E(p -> p, samples)
 
 
 ### Resampling Benchmarking

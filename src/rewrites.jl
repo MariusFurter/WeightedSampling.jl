@@ -1,9 +1,17 @@
-### Maybe could be made more generic by using `getproperty` and `setproperty!`.
-### Also maybe have SMCKernel operate on vectors.
+# Todos:
+# - Replace symbols in constructed function body with gensyms 
 
-# Other todos:
-# - Evidence
+# - Evidence -> add variable to function body and incrementally update it at resampling steps.
+
+# - Get vector-valued variables working.
+
 # - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
+# -> Check that @smc generated function works with vector arguments
+# -> Add a way to specify return values
+# -> How does evidence compose?
+# -> What about moves?
+# -> then use mutating function on current particles / could also use a non-mutating version if we don't want to keep track of the intermediate values. Probably should be black-boxed.
+# -> Find a way to introduce namespacing in a controlled way (might be unnecessary with black-boxing)
 
 function replace_symbols_except(expr, exceptions)
     if expr isa Symbol && !(expr in exceptions)
@@ -66,7 +74,11 @@ function rewrite_assignment(expr, exceptions)
     rhs_rewritten = replace_symbols_except(rhs, exceptions)
 
     quote
+        if !suppress_resampling
+            $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
+        end
         particles[!, $output_expr] .= $(rhs_rewritten)
+        suppress_resampling = true
     end
 end
 
@@ -79,6 +91,9 @@ function rewrite_sampling(expr, exceptions)
     end
 
     quote
+        if !suppress_resampling
+            $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
+        end
         let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                 kernels.$f
             else
@@ -86,8 +101,16 @@ function rewrite_sampling(expr, exceptions)
             end
             particles[!, $output_expr] .= kernel.sampler.($(args_rewritten...))
             if kernel.weighter !== nothing
-                particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
-                $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
+                if compute_evidence
+                    weights_scratch = kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+                    evidence += log(DrawingInferences.expectation(exp.(weights_scratch), particles[!, :weights]))
+                    particles[!, :weights] .+= weights_scratch
+                else
+                    particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+                end
+                suppress_resampling = false
+            else
+                suppress_resampling = true
             end
         end
     end
@@ -102,13 +125,22 @@ function rewrite_observe(expr, exceptions)
     end
 
     quote
+        if !suppress_resampling
+            $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
+        end
         let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                 kernels.$f
             else
                 $f
             end
-            particles[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
-            $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
+            if compute_evidence
+                weights_scratch .= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+                evidence += log(DrawingInferences.expectation(exp.(weights_scratch), particles[!, :weights]))
+                particles[!, :weights] .+= weights_scratch
+            else
+                particles[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+            end
+            suppress_resampling = false
         end
     end
 end
@@ -186,29 +218,37 @@ macro smc(expr)
     name! = Symbol(name, "!")
 
     return esc(quote
-        function $name!($(args...); $(kwargs...), particles, kernels=nothing, ess_perc_min=0.5::Float64)
+        function $name!($(args...); $(kwargs...), particles, kernels=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
             else
                 kernels = merge(DrawingInferences.default_kernels, kernels)
             end
+
+            suppress_resampling = true
+            weights_scratch = zeros(DrawingInferences.nrow(particles))
+            evidence = 0.0
 
             $(build_smc(body, exceptions))
-            return nothing
+            return evidence
         end
 
-        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64)
+        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
             else
                 kernels = merge(DrawingInferences.default_kernels, kernels)
             end
+
+            suppress_resampling = true
+            weights_scratch = zeros(n_particles)
+            evidence = 0.0
 
             particles = DrawingInferences.DataFrame(weights=zeros(n_particles))
             $(build_smc(body, exceptions))
-            return particles
+            return particles, evidence
         end
     end)
 end

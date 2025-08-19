@@ -44,10 +44,7 @@ function resample_particles!(particles, ess_perc_min=0.5::Float64)
     exp_norm_weights!(particles[!, :weights])
     if ess_perc(particles[!, :weights]) < ess_perc_min
         indices = stratified_resample(particles[!, :weights])
-
-        for col in names(particles)
-            particles[!, col] = particles[indices, col]
-        end
+        particles[:, :] = particles[indices, :]
         particles[!, :weights] .= 0.0
     else
         particles[!, :weights] .= log.(particles[!, :weights])

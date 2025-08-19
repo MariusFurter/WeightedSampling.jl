@@ -19,6 +19,9 @@ function exp_norm_weights(weights::Vector{Float64})
     return exp_weights ./ sum_exp_weights
 end
 
+expectation(values, weights) = sum(values .* exp_norm_weights(weights))
+
+
 """
 Compute the weighted expectation of an anonymous function `f` with respect to particle samples. Argument names of `f` reference the corresponding particle values.
 """
