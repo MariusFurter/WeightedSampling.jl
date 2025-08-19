@@ -38,7 +38,7 @@ function replace_symbols_except(expr, exceptions, N_sym)
             if all(map(s -> s in exceptions, symbols))
                 return :(fill($expr, $N_sym))
             else
-                return Expr(:call, :broadcast, :SVector, map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args)...)
+                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args)...) #MVector avoids some overhead of vcat.
             end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
@@ -70,7 +70,12 @@ function replace_symbols_in(expr, to_replace, N_sym)
         elseif expr.head == :tuple
             return :(fill($expr, $N_sym))
         elseif expr.head == :vect
-            return :(fill($expr, $N_sym))
+            symbols = collect(extract_symbols(expr))
+            if all(map(s -> s in exceptions, symbols))
+                return :(fill($expr, $N_sym))
+            else
+                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args)...) #MVector avoids some overhead of vcat.
+            end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
@@ -128,6 +133,7 @@ function rewrite_assignment(expr, exceptions, N_sym)
         end
         $assign!
         suppress_resampling = true
+        DrawingInferences.next!(progress_meter)
     end
 end
 
@@ -165,6 +171,7 @@ function rewrite_sampling(expr, exceptions, N_sym)
                 suppress_resampling = true
             end
         end
+        DrawingInferences.next!(progress_meter)
     end
 end
 
@@ -194,6 +201,7 @@ function rewrite_observe(expr, exceptions, N_sym)
             end
             suppress_resampling = false
         end
+        DrawingInferences.next!(progress_meter)
     end
 end
 
@@ -247,6 +255,36 @@ function extract_kwarg_names(kwargs)
     return kwarg_names
 end
 
+function build_step_counter(body, exceptions, steps_sym)
+    code = quote end
+    for statement in body
+        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ ~ f_(args__)) || @capture(statement, lhs_ => f_(args__))
+            e = quote
+                $steps_sym += 1
+            end
+            append!(code.args, e.args)
+
+        elseif @capture(statement, for loop_var_ in start_:stop_
+            loop_body__
+        end)
+
+            push!(exceptions, loop_var)
+            e = quote
+                for $loop_var in $start:$stop
+                    $(build_step_counter(loop_body, exceptions, steps_sym))
+                end
+            end
+            delete!(exceptions, loop_var)
+            append!(code.args, e.args)
+
+        else
+            error("Unsupported statement type: $statement")
+        end
+
+    end
+    code
+end
+
 macro smc(expr)
     if @capture(expr, function name_(args__; kwargs__)
         body__
@@ -281,6 +319,14 @@ macro smc(expr)
             end
 
             N = DrawingInferences.nrow(particles)
+
+            steps = 0
+            $(build_step_counter(body, exceptions, :steps))
+            progress_meter = DrawingInferences.Progress(steps; dt=0.1,
+                barglyphs=DrawingInferences.BarGlyphs("[=>.]"),
+                barlen=40,
+                color=:blue)
+
             suppress_resampling = true
             weights_scratch = zeros(N)
             evidence = 0.0
@@ -298,6 +344,14 @@ macro smc(expr)
             end
 
             N = n_particles
+
+            steps = 0
+            $(build_step_counter(body, exceptions, :steps))
+            progress_meter = DrawingInferences.Progress(steps; dt=0.1,
+                barglyphs=DrawingInferences.BarGlyphs("[=>.]"),
+                barlen=40,
+                color=:blue)
+
             suppress_resampling = true
             weights_scratch = zeros(N)
             evidence = 0.0

@@ -44,8 +44,17 @@ function resample_particles!(particles, ess_perc_min=0.5::Float64)
     exp_norm_weights!(particles[!, :weights])
     if ess_perc(particles[!, :weights]) < ess_perc_min
         indices = stratified_resample(particles[!, :weights])
+
         particles[:, :] = particles[indices, :]
-        particles[!, :weights] .= 0.0
+
+        # Maybe this could be improved so as to reduce allocations?
+        # Beware that we are not deep-copying arrays here.
+        for col in names(particles)
+            if eltype(particles[!, col]) <: AbstractArray
+                particles[!, col] .= copy.(particles[!, col])
+            end
+        end
+
     else
         particles[!, :weights] .= log.(particles[!, :weights])
     end

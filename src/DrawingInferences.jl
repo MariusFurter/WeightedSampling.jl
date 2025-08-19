@@ -3,6 +3,8 @@ module DrawingInferences
 using DataFrames
 using Distributions
 using MacroTools
+using ProgressMeter
+using StaticArrays
 
 export SMCKernel, @smc, @E, @E_except
 
