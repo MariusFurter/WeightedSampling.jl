@@ -1,9 +1,7 @@
 # Todos:
 # - Replace symbols in constructed function body with gensyms 
 
-# - Evidence -> add variable to function body and incrementally update it at resampling steps.
-
-# - Get vector-valued variables working.
+# - add ProgressMeter.jl
 
 # - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
 # -> Check that @smc generated function works with vector arguments
@@ -13,82 +11,136 @@
 # -> then use mutating function on current particles / could also use a non-mutating version if we don't want to keep track of the intermediate values. Probably should be black-boxed.
 # -> Find a way to introduce namespacing in a controlled way (might be unnecessary with black-boxing)
 
-function replace_symbols_except(expr, exceptions)
+function extract_symbols(expr)
+    if expr isa Symbol
+        return Set{Symbol}([expr])
+    elseif expr isa Expr
+        if expr.head == :call
+            return union(extract_symbols.(expr.args[2:end])...)
+        else
+            return union(extract_symbols.(expr.args)...)
+        end
+    else
+        return Set{Symbol}()
+    end
+end
+
+function replace_symbols_except(expr, exceptions, N_sym)
     if expr isa Symbol && !(expr in exceptions)
         return :(particles[!, $(QuoteNode(expr))])
     elseif expr isa Expr
         if expr.head == :call
-            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_except(x, exceptions), expr.args[2:end])...)
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args[2:end])...)
+        elseif expr.head == :tuple
+            return :(fill($expr, $N_sym))
+        elseif expr.head == :vect
+            symbols = collect(extract_symbols(expr))
+            if all(map(s -> s in exceptions, symbols))
+                return :(fill($expr, $N_sym))
+            else
+                return Expr(:call, :broadcast, :SVector, map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args)...)
+            end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
                 return :(particles[!, $output_expr])
             else
-                error("Only single expression allowed in curly braces")
+                error("Error while parsing $expr")
+            end
+        elseif expr.head == :ref
+            if @capture(expr, output_symbol_[index_])
+                return :(getindex.(particles[!, $(QuoteNode(output_symbol))], $index))
+            else
+                error("Error while parsing $expr")
             end
         else
-            return Expr(expr.head, map(x -> replace_symbols_except(x, exceptions), expr.args)...)
+            return Expr(expr.head, map(x -> replace_symbols_except(x, exceptions, N_sym), expr.args)...)
         end
     else
-        return expr
+        return :(fill($expr, $N_sym))
     end
 end
 
-function replace_symbols_in(expr, to_replace)
+function replace_symbols_in(expr, to_replace, N_sym)
     if expr isa Symbol && expr in to_replace
         return :(particles[!, $(QuoteNode(expr))])
     elseif expr isa Expr
         if expr.head == :call
-            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_in(x, to_replace), expr.args[2:end])...)
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_in(x, to_replace, N_sym), expr.args[2:end])...)
+        elseif expr.head == :tuple
+            return :(fill($expr, $N_sym))
+        elseif expr.head == :vect
+            return :(fill($expr, $N_sym))
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
                 return :(particles[!, $output_expr])
             else
-                error("Only single expression allowed in curly braces")
+                error("Error while parsing $expr")
+            end
+        elseif expr.head == :ref
+            if @capture(expr, output_symbol_[index_])
+                return :(getindex.(particles[!, $(QuoteNode(output_symbol))], $index))
+            else
+                error("Error while parsing $expr")
             end
         else
-            return Expr(expr.head, map(x -> replace_symbols_in(x, to_replace), expr.args)...)
+            return Expr(expr.head, map(x -> replace_symbols_in(x, to_replace, N_sym), expr.args)...)
         end
     else
-        return expr
+        return :(fill($expr, $N_sym))
     end
 end
 
 function capture_lhs(expr)
     if expr isa Symbol
         output_expr = QuoteNode(expr)
+        getter = () -> :(particles[!, $output_expr])
+        setter = (values_expr) -> :(particles[!, $output_expr] .= $values_expr)
+
     elseif @capture(expr, output_symbol_{index_})
         output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
+        getter = () -> :(particles[!, $output_expr])
+        setter = (values_expr) -> :(particles[!, $output_expr] .= $values_expr)
+
+    elseif @capture(expr, output_symbol_[index_])
+        output_expr = QuoteNode(output_symbol)
+        getter = () -> :(getindex.(particles[!, $output_expr], $index))
+        setter = (values_expr) -> :(setindex!.(particles[!, $output_expr], $values_expr, $index))
     else
-        error("Left-hand side must be a variable name `x` or an indexed variable `x{i}`")
+        error("Left-hand side must be a variable name `x` or an indexed variable `x{i}` or `x[i]`.")
     end
 
-    return output_expr
+    return getter, setter
 end
 
-function rewrite_assignment(expr, exceptions)
+function rewrite_assignment(expr, exceptions, N_sym)
     @capture(expr, lhs_ = rhs_)
 
-    output_expr = capture_lhs(lhs)
-    rhs_rewritten = replace_symbols_except(rhs, exceptions)
+    _, out_setter = capture_lhs(lhs)
+    rhs_rewritten = replace_symbols_except(rhs, exceptions, N_sym)
+
+    assign! = out_setter(rhs_rewritten)
 
     quote
         if !suppress_resampling
             $(DrawingInferences.resample_particles!)(particles, ess_perc_min)
         end
-        particles[!, $output_expr] .= $(rhs_rewritten)
+        $assign!
         suppress_resampling = true
     end
 end
 
-function rewrite_sampling(expr, exceptions)
+function rewrite_sampling(expr, exceptions, N_sym)
     @capture(expr, lhs_ ~ f_(args__))
 
-    output_expr = capture_lhs(lhs)
+    out_getter, out_setter = capture_lhs(lhs)
     args_rewritten = map(args) do arg
-        replace_symbols_except(arg, exceptions)
+        replace_symbols_except(arg, exceptions, N_sym)
     end
+
+    sample! = out_setter(:(kernel.sampler.($(args_rewritten...))))
+    output_value = out_getter()
 
     quote
         if !suppress_resampling
@@ -99,14 +151,14 @@ function rewrite_sampling(expr, exceptions)
             else
                 $f
             end
-            particles[!, $output_expr] .= kernel.sampler.($(args_rewritten...))
+            $sample!
             if kernel.weighter !== nothing
                 if compute_evidence
-                    weights_scratch = kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+                    weights_scratch = kernel.weighter.($(args_rewritten...), $output_value)
                     evidence += log(DrawingInferences.expectation(exp.(weights_scratch), particles[!, :weights]))
                     particles[!, :weights] .+= weights_scratch
                 else
-                    particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), particles[!, $output_expr])
+                    particles[!, :weights] .+= kernel.weighter.($(args_rewritten...), $output_value)
                 end
                 suppress_resampling = false
             else
@@ -116,12 +168,12 @@ function rewrite_sampling(expr, exceptions)
     end
 end
 
-function rewrite_observe(expr, exceptions)
+function rewrite_observe(expr, exceptions, N_sym)
     @capture(expr, lhs_ => f_(args__))
 
-    lhs_rewritten = replace_symbols_except(lhs, exceptions)
+    lhs_rewritten = replace_symbols_except(lhs, exceptions, N_sym)
     args_rewritten = map(args) do arg
-        replace_symbols_except(arg, exceptions)
+        replace_symbols_except(arg, exceptions, N_sym)
     end
 
     quote
@@ -145,20 +197,20 @@ function rewrite_observe(expr, exceptions)
     end
 end
 
-function build_smc(body, exceptions)
+function build_smc(body, exceptions, N_sym)
     code = quote end
     for statement in body
 
         if @capture(statement, lhs_ = rhs_)
-            rewritten_statement = rewrite_assignment(statement, exceptions)
+            rewritten_statement = rewrite_assignment(statement, exceptions, N_sym)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, lhs_ ~ f_(args__))
-            rewritten_statement = rewrite_sampling(statement, exceptions)
+            rewritten_statement = rewrite_sampling(statement, exceptions, N_sym)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, lhs_ => f_(args__))
-            rewritten_statement = rewrite_observe(statement, exceptions)
+            rewritten_statement = rewrite_observe(statement, exceptions, N_sym)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, for loop_var_ in start_:stop_
@@ -168,7 +220,7 @@ function build_smc(body, exceptions)
             push!(exceptions, loop_var)
             e = quote
                 for $loop_var in $start:$stop
-                    $(build_smc(loop_body, exceptions))
+                    $(build_smc(loop_body, exceptions, N_sym))
                 end
             end
             delete!(exceptions, loop_var)
@@ -213,7 +265,9 @@ macro smc(expr)
 
     kwarg_names = extract_kwarg_names(kwargs)
 
-    exceptions = Set{Symbol}((args..., kwarg_names...))
+    arg_exceptions = Set{Symbol}((args..., kwarg_names...))
+    reserved_names = Set{Symbol}([:undef])
+    exceptions = union(arg_exceptions, reserved_names)
 
     name! = Symbol(name, "!")
 
@@ -226,11 +280,12 @@ macro smc(expr)
                 kernels = merge(DrawingInferences.default_kernels, kernels)
             end
 
+            N = DrawingInferences.nrow(particles)
             suppress_resampling = true
-            weights_scratch = zeros(DrawingInferences.nrow(particles))
+            weights_scratch = zeros(N)
             evidence = 0.0
 
-            $(build_smc(body, exceptions))
+            $(build_smc(body, exceptions, :N))
             return evidence
         end
 
@@ -242,12 +297,13 @@ macro smc(expr)
                 kernels = merge(DrawingInferences.default_kernels, kernels)
             end
 
+            N = n_particles
             suppress_resampling = true
-            weights_scratch = zeros(n_particles)
+            weights_scratch = zeros(N)
             evidence = 0.0
 
             particles = DrawingInferences.DataFrame(weights=zeros(n_particles))
-            $(build_smc(body, exceptions))
+            $(build_smc(body, exceptions, :N))
             return particles, evidence
         end
     end)

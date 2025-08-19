@@ -8,12 +8,14 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
 DataFrames = "1.7.0"
 Distributions = "0.25"
 MacroTools = "0.5.16"
 Random = "1.6.7"
+StaticArrays = "1.9.14"
 julia = "1.6.7"
 
 [extras]

@@ -33,9 +33,10 @@ macro E(f, particles)
             error("E macro requires a function of the form (args...) -> expr")
     end
 
-    body_replaced = DrawingInferences.replace_symbols_in(body, args)
+    body_replaced = DrawingInferences.replace_symbols_in(body, args, :N)
     return esc(quote
         let particles = $particles
+            N = DrawingInferences.nrow(particles)
             weights = DrawingInferences.exp_norm_weights(particles.weights)
             values = $body_replaced
             sum(values .* weights)

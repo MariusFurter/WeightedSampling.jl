@@ -4,6 +4,37 @@ using DataFrames
 using Distributions
 using BenchmarkTools
 
+#Issues with broadcasting -> solution is to fill(-,N) all literal values. Think about how to recognize these better.
+# - Also, how to fill in arrays that references variables?
+
+using LinearAlgebra
+using StaticArrays
+
+df = DataFrame(x=randn(1000), y=randn(1000), z=randn(1000))
+
+function cat(df)
+    broadcast(vcat, df.x, df.y, df.x, df.z)
+end
+@time cat(df)
+
+
+function cat2(df)
+    broadcast(SVector, df.x, df.y, df.x, df.z)
+end
+@time cat2(df)
+
+@smc function test()
+    #x = [0.0, 0.0]
+    x = zeros(1000)
+    for i in 1:1000
+        x[i] ~ Normal(0, 1)
+    end
+    #y ~ MvNormal([x[1], x[2]], Diagonal([1.0, 1.0]))
+    #z = [y[1], 3.0]
+end
+
+samples, evidence = @time test()
+
 @smc function normal_model()
     x ~ Normal(0, 1)
     y ~ Normal(x, 1)
@@ -28,9 +59,9 @@ walkKernel = SMCKernel(
     nothing
 )
 
-@smc function bla()
+@smc function walk()
     x0 = 0.0
-    for i in 1:1_000
+    for i in 1:10_000
         x{i} ~ walkKernel(i)
         i => walkKernel(x{i})
     end
@@ -38,7 +69,23 @@ end
 
 my_kernels = (initialKernel=initialKernel, walkKernel=walkKernel)
 
-my_particles, evidence = @time bla(n_particles=1_000, kernels=my_kernels)
+my_particles, evidence = @time walk(n_particles=1_000, kernels=my_kernels)
+describe(my_particles)
+
+@smc function walk_v()
+    x = Vector{Float64}(undef, 10_000)
+    x[1] = 0.0
+    for i in 2:10_000
+        x[i] ~ walkKernel(i)
+        i => walkKernel(x[i])
+    end
+end
+
+my_particles, evidence = @time walk_v(n_particles=1_000, kernels=my_kernels)
+
+## Solves the wide df issue!
+my_particles.x[1]
+
 describe(my_particles)
 
 ### Beta-Binomial Model Benchmarking

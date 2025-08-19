@@ -15,6 +15,9 @@ macro from_distribution(dist_type)
     end
 end
 
+#Issues:
+#Dirichlet has wrong fieldnames.
+
 macro generate_kernels(distributions...)
     tuple_entries = []
 
@@ -47,3 +50,5 @@ default_kernels = @generate_kernels(
     VonMises,
     Weibull, Wishart,
 )
+
+# Multivariate dists can be sped up by (directly!) outputting static arrays of fixed size. E.g 2DNormal, etc.
