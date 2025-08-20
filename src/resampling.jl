@@ -49,9 +49,11 @@ function resample_particles!(particles, ess_perc_min=0.5::Float64)
 
         # Maybe this could be improved so as to reduce allocations?
         # Beware that we are not deep-copying arrays here.
+
+        # Also experiment with particles[:,col] vs particles[!,col]
         for col in names(particles)
             if eltype(particles[!, col]) <: AbstractArray
-                particles[!, col] .= copy.(particles[!, col])
+                particles[!, col] .= copy.(particles[:, col])
             end
         end
 
