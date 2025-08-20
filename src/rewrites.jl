@@ -133,6 +133,7 @@ function rewrite_assignment(expr, exceptions, particles_sym, N_sym)
         end
         $assign!
         suppress_resampling = true
+        current_depth += 1
         DrawingInferences.next!(progress_meter)
     end
 end
@@ -171,6 +172,7 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
                 suppress_resampling = true
             end
         end
+        current_depth += 1
         DrawingInferences.next!(progress_meter)
     end
 end
@@ -201,6 +203,30 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
             end
             suppress_resampling = false
         end
+        current_depth += 1
+        DrawingInferences.next!(progress_meter)
+    end
+end
+
+function rewrite_move(expr, exceptions, particles_sym, N_sym)
+    @capture(expr, lhs_ << f_(args__))
+
+    targets = extract_symbols(lhs)
+    targets = setdiff(targets, exceptions)
+
+    kernel_args = map(args) do arg
+        replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+    end
+
+    quote
+        let proposal = if hasproperty(proposals, $(QuoteNode(f)))
+                proposals.$f
+            else
+                $f
+            end
+            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
+        end
+        current_depth += 1
         DrawingInferences.next!(progress_meter)
     end
 end
@@ -235,9 +261,11 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             append!(code.args, e.args)
 
         elseif @capture(statement, lhs_ << f_(args__))
-            continue
+            rewritten_statement = rewrite_move(statement, exceptions, particles_sym, N_sym)
 
+            append!(code.args, rewritten_statement.args)
         else
+
             error("Unsupported statement type: $statement")
         end
     end
@@ -261,7 +289,7 @@ end
 function build_step_counter(body, exceptions, steps_sym)
     code = quote end
     for statement in body
-        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ ~ f_(args__)) || @capture(statement, lhs_ => f_(args__))
+        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ ~ f_(args__)) || @capture(statement, lhs_ => f_(args__)) || @capture(statement, lhs_ << f_(args__))
             e = quote
                 $steps_sym += 1
             end
@@ -316,12 +344,18 @@ macro smc(expr)
     particles_sym = :particles
 
     return esc(quote
-        function $name!($(args...); $(kwargs...), $particles_sym, kernels=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
+        function $name!($(args...); $(kwargs...), $particles_sym, kernels=nothing, proposals=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
             else
                 kernels = merge(DrawingInferences.default_kernels, kernels)
+            end
+
+            if proposals === nothing
+                proposals = DrawingInferences.default_proposals
+            else
+                proposals = merge(DrawingInferences.default_proposals, proposals)
             end
 
             $N_sym = DrawingInferences.nrow($particles_sym)
@@ -337,35 +371,25 @@ macro smc(expr)
 
             suppress_resampling = true
             weights_scratch = zeros($N_sym)
+            current_depth = 0
             evidence = 0.0
 
             $(build_smc(body, exceptions, particles_sym, N_sym))
+
             return evidence
         end
 
-        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
-
-            if kernels === nothing
-                kernels = DrawingInferences.default_kernels
-            else
-                kernels = merge(DrawingInferences.default_kernels, kernels)
-            end
-
-            $N_sym = n_particles
-
-            steps = 0
-            $(build_step_counter(body, exceptions, :steps))
-            progress_meter = DrawingInferences.Progress(steps; dt=0.1,
-                barglyphs=DrawingInferences.BarGlyphs("[=>.]"),
-                barlen=40,
-                color=:blue)
-
-            suppress_resampling = true
-            weights_scratch = zeros($N_sym)
-            evidence = 0.0
+        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, proposals=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
 
             $particles_sym = DrawingInferences.DataFrame(weights=zeros(n_particles))
-            $(build_smc(body, exceptions, particles_sym, N_sym))
+
+            evidence = $name!($(args...); $(kwargs...),
+                $particles_sym=$particles_sym,
+                kernels=kernels,
+                proposals=proposals,
+                ess_perc_min=ess_perc_min,
+                compute_evidence=compute_evidence)
+
             return $particles_sym, evidence
         end
     end)

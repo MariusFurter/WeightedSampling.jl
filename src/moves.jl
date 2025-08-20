@@ -1,10 +1,6 @@
 # Bonus: Add check that the same variable is not used multiple times. E.g keep a list of variables used in sampling statements up until now and check that the current variable is not in that list.
 
-## Have logpdf_difference operate on current_particles and proposed_changes (that only includes diffs as cols)
-
-## scores .+= kernel.logpdf.(args_rewritten, value_rewritten)
-## args_rewritten:
-## x -> if :x in diffs proposed_changes[!,x] else current_particles[!,x]
+### Future: Think about adding pseudo-marginal sampling when some variables are overwritten.
 
 function build_logpdf_body(body, exceptions, particles_sym, N_sym)
     code = quote end
@@ -12,14 +8,16 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
     for statement in body
 
         if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ << f_(args__))
+
             e = quote
                 tracker += 1
             end
             append!(code.args, e.args)
 
         elseif @capture(statement, lhs_ ~ f_(args__))
+
             lhs_vars = extract_symbols(lhs)
-            rhs_vars = reduce(union, map(extract_symbols, args))
+            rhs_vars = reduce(union, map(extract_symbols, args), init=Set{Symbol}())
             vars = union(lhs_vars, rhs_vars)
             vars = setdiff(vars, exceptions)
 
@@ -31,7 +29,7 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             end
 
             e = quote
-                if tracker <= target_depth && !isempty(intersect(diffs, $vars))
+                if tracker <= target_depth && !isempty(intersect(targets, $vars))
                     let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                             kernels.$f
                         else
@@ -46,8 +44,9 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             append!(code.args, e.args)
 
         elseif @capture(statement, lhs_ => f_(args__))
+
             lhs_vars = extract_symbols(lhs)
-            rhs_vars = reduce(union, map(extract_symbols, args))
+            rhs_vars = reduce(union, map(extract_symbols, args), init=Set{Symbol}())
             vars = union(lhs_vars, rhs_vars)
             vars = setdiff(vars, exceptions)
 
@@ -57,7 +56,7 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             end
 
             e = quote
-                if tracker <= target_depth && !isempty(intersect(diffs, $vars))
+                if tracker <= target_depth && !isempty(intersect(targets, $vars))
                     let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                             kernels.$f
                         else
@@ -97,7 +96,7 @@ function build_logpdf(body, exceptions, N_sym)
     particles_sym = :particles
 
     return quote
-        function logpdf($particles_sym, diffs, target_depth)
+        function smc_logpdf($particles_sym, targets, target_depth)
 
             N = DrawingInferences.nrow($particles_sym)
 
@@ -111,24 +110,22 @@ function build_logpdf(body, exceptions, N_sym)
     end
 end
 
-## Proposal kernel should take particles and var_symbols as input
-## mutate the particles in place, and return a vector of log scores.
-## (particles, in_symbols, out_symbols) -> log_scores
+function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, logpdf_fun)
+    # Calculate log of MH ratio
+    # r = p(x_new)q(x_old | x_new) / p(x_old)q(x_new | x_old)
 
-## This is general enough to allow for adaptive proposals.
-## In fact, one could also use this signature for SMCKernels.
-## No: does not seem to support partial evaluation with literals well.
+    # log_probs = log q(x_old | x_new) - log q(x_new | x_old)
+    changes, log_probs = proposal_kernel(particles, targets, kernel_args...)
 
-function mh!(proposal_kernel, targets, kernel_args, particles)
+    # log_probs -= log p(x_old)
+    log_probs -= logpdf_fun(particles, targets, target_depth)
 
-    proposed_changes, log_probs = proposal_kernel(particles, targets, kernel_args...)
+    old_values = merge_particles!(particles, changes)
 
-    log_probs -= logpdf(particles, diffs, target_depth)
+    # log_probs +- log p(x_new)
+    log_probs += logpdf_fun(particles, targets, target_depth)
 
-    old_values = merge_particles!(particles, proposed_changes)
-
-    log_probs += logpdf(particles, diffs, target_depth)
-
+    # Accept changes w. prob min(1, r)
     rejected_changes = reject(log_probs)
 
     merge_particles!(particles, old_values, rejected_changes)
@@ -158,11 +155,21 @@ end
 reject(log_probs) = log.(rand(length(log_probs))) .>= log_probs
 
 
-function RW!(particles, targets)
-    # Gaussian RW with covariance λ Σ
+## Proposal kernel should take particles and targets as input
+## and return a df of suggested changes and a vector of log scores representing q(x_old | x_new)/q(x_new | x_old).
+
+function RW(particles, targets, min_step=1e-3)
+    # Gaussian RW with covariance λΣ
     # where λ = 2.38 d^-1/2 and Σ is the empirical covariance matrix of the target particles
     # targets :: Vector
     N = nrow(particles)
+    targets = collect(targets)
+
+    # Cover case where min_step is an array
+    if min_step isa AbstractArray && !isempty(min_step)
+        min_step = min_step[1]
+    end
+
     d = length(targets)
     λ = 2.38 * d^(-1 / 2)
 
@@ -170,9 +177,8 @@ function RW!(particles, targets)
     w = ProbabilityWeights(exp_norm_weights(particles[!, :weights]))
     Σ = cov(m, w)
 
-    # Replace 0 values with minimum step epsilon
-    eps = 1e-3
-    Σ[Σ.==0] .= eps
+    # Replace values with minimum step epsilon
+    Σ[Σ.<=min_step] .= min_step
 
     changes = rand(MvNormal(λ * Σ), N)
 
@@ -180,7 +186,9 @@ function RW!(particles, targets)
         changes[i, :] .+= particles[!, col]
     end
 
-    return DataFrame(changes', targets)
+    return DataFrame(changes', targets), zeros(N)
 end
 
-### Future: Think about adding pseudo-marginal sampling when some variables are overwritten.
+default_proposals = (
+    RW=RW,
+)
