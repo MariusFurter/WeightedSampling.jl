@@ -33,7 +33,7 @@ macro E(f, particles)
             error("E macro requires a function of the form (args...) -> expr")
     end
 
-    body_replaced = DrawingInferences.replace_symbols_in(body, args, :N)
+    body_replaced = DrawingInferences.replace_symbols_in(body, args, :particles, :N)
     return esc(quote
         let particles = $particles
             N = DrawingInferences.nrow(particles)
@@ -54,7 +54,7 @@ macro E_old(f, particles)
     return esc(quote
         let particles = $particles
             particle_names = Set(Symbol.(names(particles)))
-            f_replaced = DrawingInferences.replace_symbols_in($f_quoted, particle_names)
+            f_replaced = DrawingInferences.replace_symbols_in($f_quoted, particle_names, :particles, :N)
             weights = DrawingInferences.exp_norm_weights(particles.weights)
 
             f_func_code = quote
@@ -74,7 +74,7 @@ Compute the weighted expectation of an expression `f` with respect to particle s
 """
 macro E_except(f, particles, exceptions=Symbol[])
     exceptions = Set(Symbol.(eval(exceptions)))
-    f_replaced = replace_symbols_except(f, exceptions)
+    f_replaced = replace_symbols_except(f, exceptions, :particles, :N)
     return esc(
         quote
             let particles = $particles
