@@ -8,23 +8,28 @@ using CairoMakie
 
 UniformNormal = SMCKernel(
     () -> rand(),
-    (x) -> logpdf(Exponential(1), x),
-    nothing,
+    (x) -> logpdf(Beta(2, 10), x),
+    (x) -> logpdf(Beta(2, 10), x),
 )
 
-@smc function bla(T)
+@smc function bla()
     x ~ UniformNormal()
-    for i in 1:T
-        x << RW()
+    y ~ UniformNormal()
+    for i in 1:100
+        0.2 => Normal(x, 0.1)
+        0.3 => Normal(y, 0.2)
+
     end
+    x << autoRW()
+    y << autoRW()
 end
 
-T = 10
-samples, evidence = @time bla(T)
+samples, evidence = @time bla(n_particles=1_000, ess_perc_min=0.5)
 
-hist(samples.x, normalization=:pdf)
-xs = range(-3, stop=3, length=100)
-lines!(xs, pdf(Exponential(1), xs))
+hist(samples.x, normalization=:pdf, bins=100, weights=exp.(samples.weights))
+hist!(samples.y, normalization=:pdf, bins=100, weights=exp.(samples.weights))
+xs = range(start=0, stop=1, length=100)
+lines!(xs, pdf.(Beta(2, 10), xs), color=:orange, linewidth=2)
 current_figure()
 
 code |> MacroTools.prettify

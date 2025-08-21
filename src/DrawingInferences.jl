@@ -13,6 +13,7 @@ include("rewrites.jl")
 include("resampling.jl")
 include("moves.jl")
 include("smc_kernels.jl")
+include("move_kernels.jl")
 include("utils.jl")
 
 end

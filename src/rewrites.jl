@@ -1,7 +1,11 @@
 # Todos:
 # - Think about variable scopes. Maybe replace symbols in constructed function body with gensyms, or use let blocks.
 
-# - Support more general for loops.
+# - Support for if statements with static condition.
+
+# - Weight monitoring.
+
+# - Support more for loops over collections.
 
 # - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
 # -> Check that @smc generated function works with vector arguments
@@ -219,6 +223,9 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
     end
 
     quote
+        if !suppress_resampling
+            $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+        end
         let proposal = if hasproperty(proposals, $(QuoteNode(f)))
                 proposals.$f
             else
@@ -226,6 +233,7 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
             end
             DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
         end
+        suppress_resampling = true
         current_depth += 1
         DrawingInferences.next!(progress_meter)
     end

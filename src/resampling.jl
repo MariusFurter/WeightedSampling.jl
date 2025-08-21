@@ -57,6 +57,7 @@ function resample_particles!(particles, ess_perc_min=0.5::Float64)
             end
         end
 
+        particles[!, :weights] .= 0.0
     else
         particles[!, :weights] .= log.(particles[!, :weights])
     end
