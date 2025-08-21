@@ -4,7 +4,6 @@
 function RW(particles, targets, step_size)
     # Gaussian RW independent Gaussian steps of step_size
     N = nrow(particles)
-    targets = collect(targets)
     d = length(targets)
 
     # Cover case where step_size is an array
@@ -14,11 +13,12 @@ function RW(particles, targets, step_size)
 
     changes = rand(MvNormal(zeros(d), step_size), N)
 
+    df = DataFrame()
     for (i, col) in enumerate(targets)
-        changes[i, :] .+= particles[!, col]
+        df[!, col] = changes[i, :] .+ particles[!, col]
     end
 
-    return DataFrame(changes', targets), zeros(N)
+    return df, zeros(N)
 end
 
 function autoRW(particles, targets, min_step=1e-3)
@@ -26,7 +26,6 @@ function autoRW(particles, targets, min_step=1e-3)
     # where λ = 2.38 d^-1/2 and Σ is the empirical covariance matrix of the target particles
     # targets :: Vector
     N = nrow(particles)
-    targets = collect(targets)
 
     # Cover case where min_step is an array
     if min_step isa AbstractArray && !isempty(min_step)
@@ -40,19 +39,26 @@ function autoRW(particles, targets, min_step=1e-3)
     w = ProbabilityWeights(exp_norm_weights(particles[!, :weights]))
     Σ = cov(m, w)
 
-    # Replace values with minimum step epsilon
-    Σ[Σ.<=min_step] .= min_step
+    # Replace 0.0 values with minimum step epsilon
+    Σ[Σ.==0.0] .= min_step
 
     changes = rand(MvNormal(λ * Σ), N)
 
+    df = DataFrame()
     for (i, col) in enumerate(targets)
-        changes[i, :] .+= particles[!, col]
+        df[!, col] = changes[i, :] .+ particles[!, col]
     end
 
-    return DataFrame(changes', targets), zeros(N)
+    return df, zeros(N)
+end
+
+function Dummy(particles, targets)
+    # Dummy proposal kernel that does nothing
+    return DataFrame(), zeros(nrow(particles))
 end
 
 default_proposals = (
+    Dummy=Dummy,
     RW=RW,
     autoRW=autoRW,
 )

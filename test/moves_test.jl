@@ -13,18 +13,16 @@ UniformNormal = SMCKernel(
 )
 
 @smc function bla()
-    x ~ UniformNormal()
-    y ~ UniformNormal()
-    for i in 1:100
+    x ~ Normal(0, 1)
+    y ~ Normal(0, 1)
+    for i in 1:1_000
         0.2 => Normal(x, 0.1)
         0.3 => Normal(y, 0.2)
-
+        (x, y) << autoRW()
     end
-    x << autoRW()
-    y << autoRW()
 end
 
-samples, evidence = @time bla(n_particles=1_000, ess_perc_min=0.5)
+samples, evidence = @time bla(n_particles=1_000, ess_perc_min=0.5, div_perc_min=0.5)
 
 hist(samples.x, normalization=:pdf, bins=100, weights=exp.(samples.weights))
 hist!(samples.y, normalization=:pdf, bins=100, weights=exp.(samples.weights))

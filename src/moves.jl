@@ -110,36 +110,51 @@ function build_logpdf(body, exceptions, N_sym)
     end
 end
 
-function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, logpdf_fun)
+function diversity(particles, targets)
+    N = nrow(particles)
+    return nrow(unique(particles[!, targets])) / N
+end
+
+function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, logpdf_fun, div_perc_min)
     # Calculate log of MH ratio
     # r = p(x_new)q(x_old | x_new) / p(x_old)q(x_new | x_old)
-
     # log_probs = log q(x_old | x_new) - log q(x_new | x_old)
-    changes, log_probs = proposal_kernel(particles, targets, kernel_args...)
+
+    # If the diversity of the particles is high enough skip update.
+    # TODO: Find better diversity measure
+    if diversity(particles, targets) > div_perc_min #67 allocs
+        return nothing
+    end
+
+    changes, log_probs = proposal_kernel(particles, targets, kernel_args...) # Dummy: 11 allocs, RW: 124 allocs, autoRW: 195 allocs
 
     # log_probs -= log p(x_old)
-    log_probs -= logpdf_fun(particles, targets, target_depth)
+    log_probs -= logpdf_fun(particles, targets, target_depth) #24 allocs
 
-    old_values = merge_particles!(particles, changes)
+    old_values = merge_particles!(particles, changes, return_old_values=true)
 
     # log_probs +- log p(x_new)
     log_probs += logpdf_fun(particles, targets, target_depth)
 
     # Accept changes w. prob min(1, r)
-    rejected_changes = reject(log_probs)
+    rejected_changes = reject(log_probs) # 6 allocs
 
     merge_particles!(particles, old_values, rejected_changes)
     return nothing
 end
 
-function merge_particles!(particles, changes, positions=nothing)
+# This is a major producer of allocations
+function merge_particles!(particles, changes, positions=nothing; return_old_values=false)
 
     if positions === nothing
         positions = fill(true, nrow(particles))
     end
 
     targets = names(changes)
-    old_values = particles[:, targets]
+
+    if return_old_values
+        old_values = particles[:, targets]
+    end
 
     for col in names(changes)
         if eltype(particles[!, col]) <: AbstractVector
@@ -149,7 +164,9 @@ function merge_particles!(particles, changes, positions=nothing)
         end
     end
 
-    return old_values
+    if return_old_values
+        return old_values
+    end
 end
 
 reject(log_probs) = log.(rand(length(log_probs))) .>= log_probs

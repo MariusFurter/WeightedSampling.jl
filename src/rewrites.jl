@@ -3,7 +3,7 @@
 
 # - Support for if statements with static condition.
 
-# - Weight monitoring.
+# - ess & diversity monitoring by including variables that track these quantities. These can then be used in the model, e.g. to only conditionally move when certain criteria are met.
 
 # - Support more for loops over collections.
 
@@ -217,6 +217,7 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
 
     targets = extract_symbols(lhs)
     targets = setdiff(targets, exceptions)
+    targets = collect(targets)
 
     kernel_args = map(args) do arg
         replace_symbols_except(arg, exceptions, particles_sym, N_sym)
@@ -231,7 +232,7 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
             else
                 $f
             end
-            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
+            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf, div_perc_min)
         end
         suppress_resampling = true
         current_depth += 1
@@ -352,7 +353,13 @@ macro smc(expr)
     particles_sym = :particles
 
     return esc(quote
-        function $name!($(args...); $(kwargs...), $particles_sym, kernels=nothing, proposals=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
+        function $name!($(args...); $(kwargs...),
+            $particles_sym,
+            kernels=nothing,
+            proposals=nothing,
+            ess_perc_min=0.5::Float64,
+            div_perc_min=0.5::Float64,
+            compute_evidence=true::Bool)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
@@ -387,7 +394,13 @@ macro smc(expr)
             return evidence
         end
 
-        function $name($(args...); $(kwargs...), n_particles=1_000::Int64, kernels=nothing, proposals=nothing, ess_perc_min=0.5::Float64, compute_evidence=true::Bool)
+        function $name($(args...); $(kwargs...),
+            n_particles=1_000::Int64,
+            kernels=nothing,
+            proposals=nothing,
+            ess_perc_min=0.5::Float64,
+            div_perc_min=0.5::Float64,
+            compute_evidence=true::Bool)
 
             $particles_sym = DrawingInferences.DataFrame(weights=zeros(n_particles))
 
@@ -396,6 +409,7 @@ macro smc(expr)
                 kernels=kernels,
                 proposals=proposals,
                 ess_perc_min=ess_perc_min,
+                div_perc_min=div_perc_min,
                 compute_evidence=compute_evidence)
 
             return $particles_sym, evidence
