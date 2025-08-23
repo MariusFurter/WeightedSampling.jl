@@ -7,7 +7,7 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
 
     for statement in body
 
-        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ << f_(args__))
+        if @capture(statement, lhs_ .= rhs_) || @capture(statement, lhs_ << f_(args__))
 
             e = quote
                 tracker += 1
@@ -80,13 +80,13 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             end
             append!(code.args, e.args)
 
-        elseif @capture(statement, for loop_var_ in start_:stop_
+        elseif @capture(statement, for loop_var_ in collection_
             loop_body__
         end)
 
             push!(exceptions, loop_var)
             e = quote
-                for $loop_var in $start:$stop
+                for $loop_var in $collection
                     $(build_logpdf_body(loop_body, exceptions, particles_sym, N_sym))
                 end
             end

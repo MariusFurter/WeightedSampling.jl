@@ -7,7 +7,7 @@ using ProgressMeter
 using StaticArrays
 using StatsBase
 
-export SMCKernel, @smc, @E, diversity
+export SMCKernel, @smc, @E, exp_norm, diversity
 
 include("rewrites.jl")
 include("resampling.jl")

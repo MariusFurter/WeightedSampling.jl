@@ -35,7 +35,7 @@ end
 samples, evidence = @time test_array(n_particles=10_000, ess_perc_min=0.5)
 
 @smc function test(T)
-    x = Vector{Float64}(undef, T)
+    x .= Vector{Float64}(undef, T)
     for i in 1:T
         x[i] ~ Normal(0, 1)
         0 => Normal(x[i], 1)
@@ -65,7 +65,7 @@ samples, evidence = @time test2(1_000; n_particles=10_000, ess_perc_min=0.5)
     x ~ Normal(0, 1)
     y ~ Normal(x, 1)
     3 => Normal(y, 1)
-    u = sin(x)
+    u .= sin(x)
 end
 
 @time samples, evidence = normal_model(n_particles=10_000, ess_perc_min=0.5)
@@ -86,7 +86,7 @@ walkKernel = SMCKernel(
 )
 
 @smc function walk()
-    x0 = 0.0
+    x0 .= 0.0
     for i in 1:10_000
         x{i} ~ walkKernel(i)
         i => walkKernel(x{i})
@@ -99,8 +99,8 @@ my_particles, evidence = @time walk(n_particles=1_000, kernels=my_kernels)
 describe(my_particles)
 
 @smc function walk_v()
-    x = Vector{Float64}(undef, 10_000)
-    x[1] = 0.0
+    x .= Vector{Float64}(undef, 10_000)
+    x[1] .= 0.0
     for i in 2:10_000
         x[i] ~ walkKernel(i)
         i => walkKernel(x[i])

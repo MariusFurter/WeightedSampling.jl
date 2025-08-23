@@ -1,7 +1,7 @@
 struct SMCKernel{S,L,W}
     sampler::S
-    logpdf::L
     weighter::W
+    logpdf::L
 end
 
 macro from_distribution(dist_type)
@@ -9,8 +9,8 @@ macro from_distribution(dist_type)
     quote
         SMCKernel(
             ($(fields...),) -> rand($(dist_type)($(fields...))),
+            nothing,
             ($(fields...), x) -> logpdf($(dist_type)($(fields...)), x),
-            nothing
         )
     end
 end

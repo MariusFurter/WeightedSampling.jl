@@ -1,11 +1,7 @@
 # Todos:
 # - Think about variable scopes. Maybe replace symbols in constructed function body with gensyms, or use let blocks.
 
-# - Support for if statements with static condition.
-
 # - ess & diversity monitoring by including variables that track these quantities. These can then be used in the model, e.g. to only conditionally move when certain criteria are met.
-
-# - Support more for loops over collections.
 
 # - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
 # -> Check that @smc generated function works with vector arguments
@@ -124,7 +120,7 @@ function capture_lhs(expr)
 end
 
 function rewrite_assignment(expr, exceptions, particles_sym, N_sym)
-    @capture(expr, lhs_ = rhs_)
+    @capture(expr, lhs_ .= rhs_)
 
     _, out_setter = capture_lhs(lhs)
     rhs_rewritten = replace_symbols_except(rhs, exceptions, particles_sym, N_sym)
@@ -133,7 +129,7 @@ function rewrite_assignment(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
         end
         $assign!
         suppress_resampling = true
@@ -155,7 +151,9 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+        else
+            resampled = false
         end
         let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                 kernels.$f
@@ -191,7 +189,9 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+        else
+            resampled = false
         end
         let kernel = if hasproperty(kernels, $(QuoteNode(f)))
                 kernels.$f
@@ -225,7 +225,9 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+        else
+            resampled = false
         end
         let proposal = if hasproperty(proposals, $(QuoteNode(f)))
                 proposals.$f
@@ -244,7 +246,7 @@ function build_smc(body, exceptions, particles_sym, N_sym)
     code = quote end
     for statement in body
 
-        if @capture(statement, lhs_ = rhs_)
+        if @capture(statement, lhs_ .= rhs_)
             rewritten_statement = rewrite_assignment(statement, exceptions, particles_sym, N_sym)
             append!(code.args, rewritten_statement.args)
 
@@ -266,13 +268,13 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             end
             append!(code.args, e.args)
 
-        elseif @capture(statement, for loop_var_ in start_:stop_
+        elseif @capture(statement, for loop_var_ in collection_
             loop_body__
         end)
 
             push!(exceptions, loop_var)
             e = quote
-                for $loop_var in $start:$stop
+                for $loop_var in $collection
                     $(build_smc(loop_body, exceptions, particles_sym, N_sym))
                 end
             end
@@ -281,8 +283,13 @@ function build_smc(body, exceptions, particles_sym, N_sym)
 
         elseif @capture(statement, lhs_ << f_(args__))
             rewritten_statement = rewrite_move(statement, exceptions, particles_sym, N_sym)
-
             append!(code.args, rewritten_statement.args)
+
+        elseif @capture(statement, lhs_ = rhs_)
+            lhs_vars = extract_symbols(lhs)
+            push!(exceptions, lhs_vars...)
+            push!(code.args, statement)
+
         else
             push!(code.args, statement)
         end
@@ -359,6 +366,8 @@ macro smc(expr)
             $(build_logpdf(body, exceptions, N_sym))
 
             suppress_resampling = true
+            resampled = false
+            ess_perc = 1.0
             weights_scratch = zeros($N_sym)
             current_depth = 0
             evidence = 0.0

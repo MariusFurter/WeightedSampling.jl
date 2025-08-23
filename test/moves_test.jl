@@ -6,25 +6,33 @@ using Distributions
 using StatsBase
 using CairoMakie
 
+using LinearAlgebra
+
 UniformNormal = SMCKernel(
     () -> rand(),
     (x) -> logpdf(Beta(2, 10), x),
     (x) -> logpdf(Beta(2, 10), x),
 )
 
-@smc function bla()
-    x ~ Normal(0, 1)
-    y ~ Normal(0, 1)
+@smc function bla(ess_list)
+    x ~ UniformNormal()
+    y .= 3.0
+    z = 0.1
+    w ~ Normal(z, 0.1)
     for i in 1:1_000
-        0.2 => Normal(x, 0.1)
-        0.3 => Normal(y, 0.2)
-        if diversity(particles, [:x, :y]) < 0.5
-            (x, y) << autoRW()
+        0.2 => Normal(y, z)
+        if resampled
+            x << autoRW()
         end
+        push!(ess_list, ess_perc)
     end
 end
 
-samples, evidence = @time bla(n_particles=1_000, ess_perc_min=0.5)
+ess_list = Float64[]
+
+samples, evidence = @time bla(ess_list, n_particles=1_000, ess_perc_min=0.5)
+
+ess_list
 
 hist(samples.x, normalization=:pdf, bins=100, weights=exp.(samples.weights))
 hist!(samples.y, normalization=:pdf, bins=100, weights=exp.(samples.weights))

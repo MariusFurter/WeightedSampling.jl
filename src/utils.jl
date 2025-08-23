@@ -1,7 +1,7 @@
 """
 Exponentiate and normalize the log weights in-place.
 """
-function exp_norm_weights!(weights::Vector{Float64})
+function exp_norm!(weights::Vector{Float64})
     max_weight = maximum(weights)
     weights .= exp.(weights .- max_weight)
     sum_exp_weights = sum(weights)
@@ -12,14 +12,14 @@ end
 """
 Exponentiate and normalize the log weights, returning a new vector.
 """
-function exp_norm_weights(weights::Vector{Float64})
+function exp_norm(weights::Vector{Float64})
     max_weight = maximum(weights)
     exp_weights = exp.(weights .- max_weight)
     sum_exp_weights = sum(exp_weights)
     return exp_weights ./ sum_exp_weights
 end
 
-expectation(values, weights) = sum(values .* exp_norm_weights(weights))
+expectation(values, weights) = sum(values .* exp_norm(weights))
 
 
 """
@@ -37,7 +37,7 @@ macro E(f, particles)
     return esc(quote
         let particles = $particles
             N = DrawingInferences.nrow(particles)
-            weights = DrawingInferences.exp_norm_weights(particles.weights)
+            weights = DrawingInferences.exp_norm(particles.weights)
             values = $body_replaced
             sum(values .* weights)
         end
@@ -55,7 +55,7 @@ macro E_old(f, particles)
         let particles = $particles
             particle_names = Set(Symbol.(names(particles)))
             f_replaced = DrawingInferences.replace_symbols_in($f_quoted, particle_names, :particles, :N)
-            weights = DrawingInferences.exp_norm_weights(particles.weights)
+            weights = DrawingInferences.exp_norm(particles.weights)
 
             f_func_code = quote
                 (particles) -> $f_replaced
@@ -78,7 +78,7 @@ macro E_except(f, particles, exceptions=Symbol[])
     return esc(
         quote
             let particles = $particles
-                weights = DrawingInferences.exp_norm_weights(particles.weights)
+                weights = DrawingInferences.exp_norm(particles.weights)
                 sum($f_replaced .* weights)
             end
         end

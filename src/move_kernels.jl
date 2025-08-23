@@ -36,7 +36,7 @@ function autoRW(particles, targets, min_step=1e-3)
     λ = 2.38 * d^(-1 / 2)
 
     m = Matrix(particles[!, targets])
-    w = ProbabilityWeights(exp_norm_weights(particles[!, :weights]))
+    w = ProbabilityWeights(exp_norm(particles[!, :weights]))
     Σ = cov(m, w)
 
     # Replace 0.0 values with minimum step epsilon
