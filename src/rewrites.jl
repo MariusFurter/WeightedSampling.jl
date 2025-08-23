@@ -232,7 +232,7 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
             else
                 $f
             end
-            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf, div_perc_min)
+            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
         end
         suppress_resampling = true
         current_depth += 1
@@ -256,6 +256,16 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             rewritten_statement = rewrite_observe(statement, exceptions, particles_sym, N_sym)
             append!(code.args, rewritten_statement.args)
 
+        elseif @capture(statement, if condition_
+            body__
+        end)
+            e = quote
+                if $condition
+                    $(build_smc(body, exceptions, particles_sym, N_sym))
+                end
+            end
+            append!(code.args, e.args)
+
         elseif @capture(statement, for loop_var_ in start_:stop_
             loop_body__
         end)
@@ -274,8 +284,7 @@ function build_smc(body, exceptions, particles_sym, N_sym)
 
             append!(code.args, rewritten_statement.args)
         else
-
-            error("Unsupported statement type: $statement")
+            push!(code.args, statement)
         end
     end
     return code
@@ -293,36 +302,6 @@ function extract_kwarg_names(kwargs)
         end
     end
     return kwarg_names
-end
-
-function build_step_counter(body, exceptions, steps_sym)
-    code = quote end
-    for statement in body
-        if @capture(statement, lhs_ = rhs_) || @capture(statement, lhs_ ~ f_(args__)) || @capture(statement, lhs_ => f_(args__)) || @capture(statement, lhs_ << f_(args__))
-            e = quote
-                $steps_sym += 1
-            end
-            append!(code.args, e.args)
-
-        elseif @capture(statement, for loop_var_ in start_:stop_
-            loop_body__
-        end)
-
-            push!(exceptions, loop_var)
-            e = quote
-                for $loop_var in $start:$stop
-                    $(build_step_counter(loop_body, exceptions, steps_sym))
-                end
-            end
-            delete!(exceptions, loop_var)
-            append!(code.args, e.args)
-
-        else
-            error("Unsupported statement type: $statement")
-        end
-
-    end
-    code
 end
 
 macro smc(expr)
@@ -358,8 +337,8 @@ macro smc(expr)
             kernels=nothing,
             proposals=nothing,
             ess_perc_min=0.5::Float64,
-            div_perc_min=0.5::Float64,
-            compute_evidence=true::Bool)
+            compute_evidence=true::Bool,
+            show_progress=true::Bool)
 
             if kernels === nothing
                 kernels = DrawingInferences.default_kernels
@@ -375,12 +354,7 @@ macro smc(expr)
 
             $N_sym = DrawingInferences.nrow($particles_sym)
 
-            steps = 0
-            $(build_step_counter(body, exceptions, :steps))
-            progress_meter = DrawingInferences.Progress(steps; dt=0.1,
-                barglyphs=DrawingInferences.BarGlyphs("[=>.]"),
-                barlen=40,
-                color=:blue)
+            progress_meter = DrawingInferences.ProgressUnknown(desc="Steps performed:", dt=0.1, showspeed=true, color=:blue, enabled=show_progress)
 
             $(build_logpdf(body, exceptions, N_sym))
 
@@ -390,6 +364,7 @@ macro smc(expr)
             evidence = 0.0
 
             $(build_smc(body, exceptions, particles_sym, N_sym))
+            DrawingInferences.finish!(progress_meter)
 
             return evidence
         end
@@ -399,8 +374,8 @@ macro smc(expr)
             kernels=nothing,
             proposals=nothing,
             ess_perc_min=0.5::Float64,
-            div_perc_min=0.5::Float64,
-            compute_evidence=true::Bool)
+            compute_evidence=true::Bool,
+            show_progress=true::Bool)
 
             $particles_sym = DrawingInferences.DataFrame(weights=zeros(n_particles))
 
@@ -409,8 +384,8 @@ macro smc(expr)
                 kernels=kernels,
                 proposals=proposals,
                 ess_perc_min=ess_perc_min,
-                div_perc_min=div_perc_min,
-                compute_evidence=compute_evidence)
+                compute_evidence=compute_evidence,
+                show_progress=show_progress)
 
             return $particles_sym, evidence
         end

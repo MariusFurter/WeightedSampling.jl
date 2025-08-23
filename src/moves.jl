@@ -70,6 +70,16 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
 
             append!(code.args, e.args)
 
+        elseif @capture(statement, if condition_
+            body__
+        end)
+            e = quote
+                if $condition
+                    $(build_logpdf_body(body, exceptions, particles_sym, N_sym))
+                end
+            end
+            append!(code.args, e.args)
+
         elseif @capture(statement, for loop_var_ in start_:stop_
             loop_body__
         end)
@@ -84,7 +94,8 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             append!(code.args, e.args)
 
         else
-            error("Unsupported statement type: $statement")
+            continue
+            #error("Unsupported statement type: $statement")
         end
     end
 
@@ -115,21 +126,15 @@ function diversity(particles, targets)
     return nrow(unique(particles[!, targets])) / N
 end
 
-function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, logpdf_fun, div_perc_min)
+function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, logpdf_fun)
     # Calculate log of MH ratio
     # r = p(x_new)q(x_old | x_new) / p(x_old)q(x_new | x_old)
     # log_probs = log q(x_old | x_new) - log q(x_new | x_old)
 
-    # If the diversity of the particles is high enough skip update.
-    # TODO: Find better diversity measure
-    if diversity(particles, targets) > div_perc_min #67 allocs
-        return nothing
-    end
-
-    changes, log_probs = proposal_kernel(particles, targets, kernel_args...) # Dummy: 11 allocs, RW: 124 allocs, autoRW: 195 allocs
+    changes, log_probs = proposal_kernel(particles, targets, kernel_args...)
 
     # log_probs -= log p(x_old)
-    log_probs -= logpdf_fun(particles, targets, target_depth) #24 allocs
+    log_probs -= logpdf_fun(particles, targets, target_depth)
 
     old_values = merge_particles!(particles, changes, return_old_values=true)
 
@@ -137,7 +142,7 @@ function mh!(particles, proposal_kernel, targets, target_depth, kernel_args, log
     log_probs += logpdf_fun(particles, targets, target_depth)
 
     # Accept changes w. prob min(1, r)
-    rejected_changes = reject(log_probs) # 6 allocs
+    rejected_changes = reject(log_probs)
 
     merge_particles!(particles, old_values, rejected_changes)
     return nothing
