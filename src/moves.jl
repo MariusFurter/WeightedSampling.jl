@@ -109,7 +109,7 @@ function build_logpdf(body, exceptions, N_sym)
     return quote
         function smc_logpdf($particles_sym, targets, target_depth)
 
-            N = DrawingInferences.nrow($particles_sym)
+            N = WeightedSampling.nrow($particles_sym)
 
             scores = zeros(N)
             tracker = 1

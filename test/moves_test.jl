@@ -1,5 +1,5 @@
 using Revise
-using DrawingInferences
+using WeightedSampling
 using MacroTools
 using DataFrames
 using Distributions
@@ -58,13 +58,13 @@ macro logpdf_diff(expr)
         error("Expression must be a function definition")
     end
 
-    kwarg_names = DrawingInferences.extract_kwarg_names(kwargs)
+    kwarg_names = WeightedSampling.extract_kwarg_names(kwargs)
 
     arg_exceptions = Set{Symbol}((args..., kwarg_names...))
     reserved_names = Set{Symbol}([:undef])
     exceptions = union(arg_exceptions, reserved_names)
 
-    return DrawingInferences.build_logpdf(body, exceptions, :N)
+    return WeightedSampling.build_logpdf(body, exceptions, :N)
 end
 
 smc_logpdf = @logpdf_diff function bla()

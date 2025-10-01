@@ -1,5 +1,5 @@
 using Revise
-using DrawingInferences
+using WeightedSampling
 using DataFrames
 using Distributions
 using BenchmarkTools
@@ -138,9 +138,9 @@ smc_p_val = @E(p -> p, samples)
 ### Resampling Benchmarking
 particles_template = DataFrame(x=[n for n in 1:1000], weights=randn(1000))
 
-@btime DrawingInferences.exp_norm_weights!(particles.weights) setup = (particles = copy(particles_template)) # 4us, 0 allocs
+@btime WeightedSampling.exp_norm_weights!(particles.weights) setup = (particles = copy(particles_template)) # 4us, 0 allocs
 #No resampling needed
-@btime DrawingInferences.resample_particles!(particles, 0.0) setup = (particles = copy(particles_template)) # 10us, 16 allocs
+@btime WeightedSampling.resample_particles!(particles, 0.0) setup = (particles = copy(particles_template)) # 10us, 16 allocs
 #Resampling needed
-@btime DrawingInferences.resample_particles!(particles, 1.0) setup = (particles = copy(particles_template)) # 16us, 35 allocs
+@btime WeightedSampling.resample_particles!(particles, 1.0) setup = (particles = copy(particles_template)) # 16us, 35 allocs
 particles

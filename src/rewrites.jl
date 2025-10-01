@@ -129,12 +129,12 @@ function rewrite_assignment(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
         end
         $assign!
         suppress_resampling = true
         current_depth += 1
-        DrawingInferences.next!(progress_meter)
+        WeightedSampling.next!(progress_meter)
     end
 end
 
@@ -151,7 +151,7 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
         else
             resampled = false
         end
@@ -164,7 +164,7 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
             if kernel.weighter !== nothing
                 if compute_evidence
                     weights_scratch = kernel.weighter.($(args_rewritten...), $output_value)
-                    evidence += log(DrawingInferences.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
+                    evidence += log(WeightedSampling.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
                     $particles_sym[!, :weights] .+= weights_scratch
                 else
                     $particles_sym[!, :weights] .+= kernel.weighter.($(args_rewritten...), $output_value)
@@ -175,7 +175,7 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
             end
         end
         current_depth += 1
-        DrawingInferences.next!(progress_meter)
+        WeightedSampling.next!(progress_meter)
     end
 end
 
@@ -189,7 +189,7 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
         else
             resampled = false
         end
@@ -200,7 +200,7 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
             end
             if compute_evidence
                 weights_scratch .= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
-                evidence += log(DrawingInferences.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
+                evidence += log(WeightedSampling.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
                 $particles_sym[!, :weights] .+= weights_scratch
             else
                 $particles_sym[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
@@ -208,7 +208,7 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
             suppress_resampling = false
         end
         current_depth += 1
-        DrawingInferences.next!(progress_meter)
+        WeightedSampling.next!(progress_meter)
     end
 end
 
@@ -225,7 +225,7 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(DrawingInferences.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
         else
             resampled = false
         end
@@ -234,11 +234,11 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
             else
                 $f
             end
-            DrawingInferences.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
+            WeightedSampling.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
         end
         suppress_resampling = true
         current_depth += 1
-        DrawingInferences.next!(progress_meter)
+        WeightedSampling.next!(progress_meter)
     end
 end
 
@@ -348,20 +348,20 @@ macro smc(expr)
             show_progress=true::Bool)
 
             if kernels === nothing
-                kernels = DrawingInferences.default_kernels
+                kernels = WeightedSampling.default_kernels
             else
-                kernels = merge(DrawingInferences.default_kernels, kernels)
+                kernels = merge(WeightedSampling.default_kernels, kernels)
             end
 
             if proposals === nothing
-                proposals = DrawingInferences.default_proposals
+                proposals = WeightedSampling.default_proposals
             else
-                proposals = merge(DrawingInferences.default_proposals, proposals)
+                proposals = merge(WeightedSampling.default_proposals, proposals)
             end
 
-            $N_sym = DrawingInferences.nrow($particles_sym)
+            $N_sym = WeightedSampling.nrow($particles_sym)
 
-            progress_meter = DrawingInferences.ProgressUnknown(desc="Steps performed:", dt=0.1, showspeed=true, color=:blue, enabled=show_progress)
+            progress_meter = WeightedSampling.ProgressUnknown(desc="Steps performed:", dt=0.1, showspeed=true, color=:blue, enabled=show_progress)
 
             $(build_logpdf(body, exceptions, N_sym))
 
@@ -373,7 +373,7 @@ macro smc(expr)
             evidence = 0.0
 
             $(build_smc(body, exceptions, particles_sym, N_sym))
-            DrawingInferences.finish!(progress_meter)
+            WeightedSampling.finish!(progress_meter)
 
             return evidence
         end
@@ -386,7 +386,7 @@ macro smc(expr)
             compute_evidence=true::Bool,
             show_progress=true::Bool)
 
-            $particles_sym = DrawingInferences.DataFrame(weights=zeros(n_particles))
+            $particles_sym = WeightedSampling.DataFrame(weights=zeros(n_particles))
 
             evidence = $name!($(args...); $(kwargs...),
                 $particles_sym=$particles_sym,

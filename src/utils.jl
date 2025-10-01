@@ -33,11 +33,11 @@ macro E(f, particles)
             error("E macro requires a function of the form (args...) -> expr")
     end
 
-    body_replaced = DrawingInferences.replace_symbols_in(body, args, :particles, :N)
+    body_replaced = WeightedSampling.replace_symbols_in(body, args, :particles, :N)
     return esc(quote
         let particles = $particles
-            N = DrawingInferences.nrow(particles)
-            weights = DrawingInferences.exp_norm(particles.weights)
+            N = WeightedSampling.nrow(particles)
+            weights = WeightedSampling.exp_norm(particles.weights)
             values = $body_replaced
             sum(values .* weights)
         end
@@ -54,8 +54,8 @@ macro E_old(f, particles)
     return esc(quote
         let particles = $particles
             particle_names = Set(Symbol.(names(particles)))
-            f_replaced = DrawingInferences.replace_symbols_in($f_quoted, particle_names, :particles, :N)
-            weights = DrawingInferences.exp_norm(particles.weights)
+            f_replaced = WeightedSampling.replace_symbols_in($f_quoted, particle_names, :particles, :N)
+            weights = WeightedSampling.exp_norm(particles.weights)
 
             f_func_code = quote
                 (particles) -> $f_replaced
@@ -78,7 +78,7 @@ macro E_except(f, particles, exceptions=Symbol[])
     return esc(
         quote
             let particles = $particles
-                weights = DrawingInferences.exp_norm(particles.weights)
+                weights = WeightedSampling.exp_norm(particles.weights)
                 sum($f_replaced .* weights)
             end
         end

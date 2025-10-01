@@ -1,4 +1,4 @@
-module DrawingInferences
+module WeightedSampling
 
 using DataFrames
 using Distributions

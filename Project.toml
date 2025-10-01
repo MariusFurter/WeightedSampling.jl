@@ -1,4 +1,4 @@
-name = "DrawingInferences"
+name = "WeightedSampling"
 uuid = "e5b4febb-f41c-4386-84f4-e73e26fd4cda"
 authors = ["Marius Furter"]
 version = "1.0.0-DEV"
