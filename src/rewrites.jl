@@ -31,28 +31,28 @@ function extract_loop_vars(loop_var)
     end
 end
 
-function replace_symbols_except(expr, exceptions, particles_sym, N_sym)
+function replace_symbols_except(expr, exceptions, symbols)
     if expr isa Symbol && !(expr in exceptions)
-        return :($particles_sym[!, $(QuoteNode(expr))])
+        return :($(symbols.particles)[!, $(QuoteNode(expr))])
     elseif expr isa Expr
         if expr.head == :call
-            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_except(x, exceptions, particles_sym, N_sym), expr.args[2:end])...)
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_except(x, exceptions, symbols), expr.args[2:end])...)
         elseif expr.head == :tuple
-            return :(fill($expr, $N_sym))
+            return :(fill($expr, $(symbols.N)))
         elseif expr.head == :vect
-            symbols = collect(extract_symbols(expr))
-            if all(map(s -> s in exceptions, symbols))
-                return :(fill($expr, $N_sym))
+            expr_symbols = collect(extract_symbols(expr))
+            if all(map(s -> s in exceptions, expr_symbols))
+                return :(fill($expr, $(symbols.N)))
             else
-                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_except(x, exceptions, particles_sym, N_sym), expr.args)...) #MVector avoids some overhead of vcat.
+                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_except(x, exceptions, symbols), expr.args)...) #MVector avoids some overhead of vcat.
             end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 if output_symbol in exceptions
-                    return :(fill($expr, $N_sym))  # Broadcast the templated expression to all particles
+                    return :(fill($expr, $(symbols.N)))
                 else
                     output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
-                    return :($particles_sym[!, $output_expr])
+                    return :($(symbols.particles)[!, $output_expr])
                 end
             else
                 error("Error while parsing $expr")
@@ -60,54 +60,55 @@ function replace_symbols_except(expr, exceptions, particles_sym, N_sym)
         elseif expr.head == :ref
             if @capture(expr, output_symbol_[index_])
                 if output_symbol in exceptions
-                    return :(fill($expr, $N_sym))  # Broadcast the indexed value to all particles
+                    return :(fill($expr, $(symbols.N)))
                 else
-                    return :(getindex.($particles_sym[!, $(QuoteNode(output_symbol))], $index))
+                    return :(getindex.($(symbols.particles)[!, $(QuoteNode(output_symbol))], $index))
                 end
             else
                 error("Error while parsing $expr")
             end
         else
-            return Expr(expr.head, map(x -> replace_symbols_except(x, exceptions, particles_sym, N_sym), expr.args)...)
+            return Expr(expr.head, map(x -> replace_symbols_except(x, exceptions, symbols), expr.args)...)
         end
     else
-        return :(fill($expr, $N_sym))
+        return :(fill($expr, $(symbols.N)))
     end
 end
 
-function replace_symbols_in(expr, to_replace, particles_sym, N_sym)
+function replace_symbols_in(expr, to_replace, symbols)
     if expr isa Symbol && expr in to_replace
-        return :($particles_sym[!, $(QuoteNode(expr))])
+        return :($(symbols.particles)[!, $(QuoteNode(expr))])
     elseif expr isa Expr
         if expr.head == :call
-            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_in(x, to_replace, particles_sym, N_sym), expr.args[2:end])...)
+            return Expr(:call, :broadcast, expr.args[1], map(x -> replace_symbols_in(x, to_replace, symbols), expr.args[2:end])...)
         elseif expr.head == :tuple
-            return :(fill($expr, $N_sym))
+            return :(fill($expr, $(symbols.N)))
         elseif expr.head == :vect
-            symbols = collect(extract_symbols(expr))
-            if all(map(s -> s in exceptions, symbols))
-                return :(fill($expr, $N_sym))
+            expr_symbols = collect(extract_symbols(expr))
+            # For this function, we check if symbols are in to_replace, not exceptions
+            if all(map(s -> s ∉ to_replace, expr_symbols))
+                return :(fill($expr, $(symbols.N)))
             else
-                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_except(x, exceptions, particles_sym, N_sym), expr.args)...) #MVector avoids some overhead of vcat.
+                return Expr(:call, :broadcast, :MVector, map(x -> replace_symbols_in(x, to_replace, symbols), expr.args)...)
             end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
                 output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
-                return :($particles_sym[!, $output_expr])
+                return :($(symbols.particles)[!, $output_expr])
             else
                 error("Error while parsing $expr")
             end
         elseif expr.head == :ref
             if @capture(expr, output_symbol_[index_])
-                return :(getindex.($particles_sym[!, $(QuoteNode(output_symbol))], $index))
+                return :(getindex.($(symbols.particles)[!, $(QuoteNode(output_symbol))], $index))
             else
                 error("Error while parsing $expr")
             end
         else
-            return Expr(expr.head, map(x -> replace_symbols_in(x, to_replace, particles_sym, N_sym), expr.args)...)
+            return Expr(expr.head, map(x -> replace_symbols_in(x, to_replace, symbols), expr.args)...)
         end
     else
-        return :(fill($expr, $N_sym))
+        return :(fill($expr, $(symbols.N)))
     end
 end
 
@@ -133,39 +134,39 @@ function capture_lhs(expr)
     return getter, setter
 end
 
-function rewrite_assignment(expr, exceptions, particles_sym, N_sym)
+function rewrite_assignment(expr, exceptions, symbols)
     @capture(expr, lhs_ .= rhs_)
 
     _, out_setter = capture_lhs(lhs)
-    rhs_rewritten = replace_symbols_except(rhs, exceptions, particles_sym, N_sym)
+    rhs_rewritten = replace_symbols_except(rhs, exceptions, symbols)
 
-    assign! = out_setter(particles_sym, rhs_rewritten)
+    assign! = out_setter(symbols.particles, rhs_rewritten)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($(symbols.particles), ess_perc_min)
         end
         $assign!
         suppress_resampling = true
-        current_depth += 1
-        WeightedSampling.next!(progress_meter)
+        $(symbols.current_depth) += 1
+        WeightedSampling.next!($(symbols.progress_meter))
     end
 end
 
-function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
+function rewrite_sampling(expr, exceptions, symbols)
     @capture(expr, lhs_ ~ f_(args__))
 
     out_getter, out_setter = capture_lhs(lhs)
     args_rewritten = map(args) do arg
-        replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+        replace_symbols_except(arg, exceptions, symbols)
     end
 
-    sample! = out_setter(particles_sym, :(kernel.sampler.($(args_rewritten...))))
-    output_value = out_getter(particles_sym)
+    sample! = out_setter(symbols.particles, :(kernel.sampler.($(args_rewritten...))))
+    output_value = out_getter(symbols.particles)
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($(symbols.particles), ess_perc_min)
         else
             resampled = false
         end
@@ -177,33 +178,33 @@ function rewrite_sampling(expr, exceptions, particles_sym, N_sym)
             $sample!
             if kernel.weighter !== nothing
                 if compute_evidence
-                    weights_scratch = kernel.weighter.($(args_rewritten...), $output_value)
-                    evidence += log(WeightedSampling.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
-                    $particles_sym[!, :weights] .+= weights_scratch
+                    $(symbols.weights_scratch) = kernel.weighter.($(args_rewritten...), $output_value)
+                    evidence += log(WeightedSampling.expectation(exp.($(symbols.weights_scratch)), $(symbols.particles)[!, :weights]))
+                    $(symbols.particles)[!, :weights] .+= $(symbols.weights_scratch)
                 else
-                    $particles_sym[!, :weights] .+= kernel.weighter.($(args_rewritten...), $output_value)
+                    $(symbols.particles)[!, :weights] .+= kernel.weighter.($(args_rewritten...), $output_value)
                 end
                 suppress_resampling = false
             else
                 suppress_resampling = true
             end
         end
-        current_depth += 1
-        WeightedSampling.next!(progress_meter)
+        $(symbols.current_depth) += 1
+        WeightedSampling.next!($(symbols.progress_meter))
     end
 end
 
-function rewrite_observe(expr, exceptions, particles_sym, N_sym)
+function rewrite_observe(expr, exceptions, symbols)
     @capture(expr, lhs_ => f_(args__))
 
-    lhs_rewritten = replace_symbols_except(lhs, exceptions, particles_sym, N_sym)
+    lhs_rewritten = replace_symbols_except(lhs, exceptions, symbols)
     args_rewritten = map(args) do arg
-        replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+        replace_symbols_except(arg, exceptions, symbols)
     end
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($(symbols.particles), ess_perc_min)
         else
             resampled = false
         end
@@ -213,20 +214,20 @@ function rewrite_observe(expr, exceptions, particles_sym, N_sym)
                 $f
             end
             if compute_evidence
-                weights_scratch .= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
-                evidence += log(WeightedSampling.expectation(exp.(weights_scratch), $particles_sym[!, :weights]))
-                $particles_sym[!, :weights] .+= weights_scratch
+                $(symbols.weights_scratch) .= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+                evidence += log(WeightedSampling.expectation(exp.($(symbols.weights_scratch)), $(symbols.particles)[!, :weights]))
+                $(symbols.particles)[!, :weights] .+= $(symbols.weights_scratch)
             else
-                $particles_sym[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
+                $(symbols.particles)[!, :weights] .+= kernel.logpdf.($(args_rewritten...), $lhs_rewritten)
             end
             suppress_resampling = false
         end
-        current_depth += 1
-        WeightedSampling.next!(progress_meter)
+        $(symbols.current_depth) += 1
+        WeightedSampling.next!($(symbols.progress_meter))
     end
 end
 
-function rewrite_move(expr, exceptions, particles_sym, N_sym)
+function rewrite_move(expr, exceptions, symbols)
     @capture(expr, lhs_ << f_(args__))
 
     targets = extract_symbols(lhs)
@@ -234,12 +235,12 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
     targets = collect(targets)
 
     kernel_args = map(args) do arg
-        replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+        replace_symbols_except(arg, exceptions, symbols)
     end
 
     quote
         if !suppress_resampling
-            resampled, ess_perc = $(WeightedSampling.resample_particles!)($particles_sym, ess_perc_min)
+            resampled, ess_perc = $(WeightedSampling.resample_particles!)($(symbols.particles), ess_perc_min)
         else
             resampled = false
         end
@@ -248,28 +249,28 @@ function rewrite_move(expr, exceptions, particles_sym, N_sym)
             else
                 $f
             end
-            WeightedSampling.mh!($particles_sym, proposal, $targets, current_depth, ($(kernel_args...),), smc_logpdf)
+            WeightedSampling.mh!($(symbols.particles), proposal, $targets, $(symbols.current_depth), ($(kernel_args...),), smc_logpdf)
         end
         suppress_resampling = true
-        current_depth += 1
-        WeightedSampling.next!(progress_meter)
+        $(symbols.current_depth) += 1
+        WeightedSampling.next!($(symbols.progress_meter))
     end
 end
 
-function build_smc(body, exceptions, particles_sym, N_sym)
+function build_smc(body, exceptions, symbols)
     code = quote end
     for statement in body
 
         if @capture(statement, lhs_ .= rhs_)
-            rewritten_statement = rewrite_assignment(statement, exceptions, particles_sym, N_sym)
+            rewritten_statement = rewrite_assignment(statement, exceptions, symbols)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, lhs_ ~ f_(args__))
-            rewritten_statement = rewrite_sampling(statement, exceptions, particles_sym, N_sym)
+            rewritten_statement = rewrite_sampling(statement, exceptions, symbols)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, lhs_ => f_(args__))
-            rewritten_statement = rewrite_observe(statement, exceptions, particles_sym, N_sym)
+            rewritten_statement = rewrite_observe(statement, exceptions, symbols)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, if condition_
@@ -277,7 +278,7 @@ function build_smc(body, exceptions, particles_sym, N_sym)
         end)
             e = quote
                 if $condition
-                    $(build_smc(body, exceptions, particles_sym, N_sym))
+                    $(build_smc(body, exceptions, symbols))
                 end
             end
             append!(code.args, e.args)
@@ -292,7 +293,7 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             end
             e = quote
                 for $loop_var in $collection
-                    $(build_smc(loop_body, exceptions, particles_sym, N_sym))
+                    $(build_smc(loop_body, exceptions, symbols))
                 end
             end
             for var in loop_vars
@@ -301,7 +302,7 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             append!(code.args, e.args)
 
         elseif @capture(statement, lhs_ << f_(args__))
-            rewritten_statement = rewrite_move(statement, exceptions, particles_sym, N_sym)
+            rewritten_statement = rewrite_move(statement, exceptions, symbols)
             append!(code.args, rewritten_statement.args)
 
         elseif @capture(statement, lhs_ = rhs_)
@@ -330,6 +331,8 @@ function extract_kwarg_names(kwargs)
     return kwarg_names
 end
 
+const SMCSymbols = @NamedTuple{particles::Symbol, N::Symbol, weights_scratch::Symbol, current_depth::Symbol, progress_meter::Symbol}
+
 macro smc(expr)
     if @capture(expr, function name_(args__; kwargs__)
         body__
@@ -354,12 +357,17 @@ macro smc(expr)
 
     name! = Symbol(name, "!")
 
-    N_sym = :N
-    particles_sym = :particles
+    symbols = SMCSymbols((
+        particles=:particles,
+        N=gensym(:N),
+        weights_scratch=gensym(:weights_scratch),
+        current_depth=gensym(:current_depth),
+        progress_meter=gensym(:progress_meter)
+    ))
 
     return esc(quote
         function $name!($(args...); $(kwargs...),
-            $particles_sym,
+            $(symbols.particles),
             kernels=nothing,
             proposals=nothing,
             ess_perc_min=0.5::Float64,
@@ -378,21 +386,21 @@ macro smc(expr)
                 proposals = merge(WeightedSampling.default_proposals, proposals)
             end
 
-            $N_sym = WeightedSampling.nrow($particles_sym)
+            $(symbols.N) = WeightedSampling.nrow($(symbols.particles))
 
-            progress_meter = WeightedSampling.ProgressUnknown(desc="Steps performed:", dt=0.1, showspeed=true, color=:blue, enabled=show_progress)
+            $(symbols.progress_meter) = WeightedSampling.ProgressUnknown(desc="Steps performed:", dt=0.1, showspeed=true, color=:blue, enabled=show_progress)
 
-            $(build_logpdf(body, exceptions, N_sym))
+            $(build_logpdf(body, exceptions, symbols))
 
             suppress_resampling = true
             resampled = false
             ess_perc = 1.0
-            weights_scratch = zeros($N_sym)
-            current_depth = 0
+            $(symbols.weights_scratch) = zeros($(symbols.N))
+            $(symbols.current_depth) = 0
             evidence = 0.0
 
-            $(build_smc(body, exceptions, particles_sym, N_sym))
-            WeightedSampling.finish!(progress_meter)
+            $(build_smc(body, exceptions, symbols))
+            WeightedSampling.finish!($(symbols.progress_meter))
 
             return evidence
         end
@@ -405,17 +413,17 @@ macro smc(expr)
             compute_evidence=true::Bool,
             show_progress=true::Bool)
 
-            $particles_sym = WeightedSampling.DataFrame(weights=zeros(n_particles))
+            $(symbols.particles) = WeightedSampling.DataFrame(weights=zeros(n_particles))
 
             evidence = $name!($(args...); $(kwargs...),
-                $particles_sym=$particles_sym,
+                $(symbols.particles)=$(symbols.particles),
                 kernels=kernels,
                 proposals=proposals,
                 ess_perc_min=ess_perc_min,
                 compute_evidence=compute_evidence,
                 show_progress=show_progress)
 
-            return $particles_sym, evidence
+            return $(symbols.particles), evidence
         end
     end)
 end

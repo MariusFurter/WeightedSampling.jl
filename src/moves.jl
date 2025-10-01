@@ -1,4 +1,4 @@
-function build_logpdf_body(body, exceptions, particles_sym, N_sym)
+function build_logpdf_body(body, exceptions, symbols)
     code = quote end
 
     for statement in body
@@ -18,10 +18,10 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             vars = setdiff(vars, exceptions)
 
             out_getter, _ = capture_lhs(lhs)
-            lhs_rewritten = out_getter(particles_sym)
+            lhs_rewritten = out_getter(symbols.particles)
 
             args_rewritten = map(args) do arg
-                replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+                replace_symbols_except(arg, exceptions, symbols)
             end
 
             e = quote
@@ -46,9 +46,9 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             vars = union(lhs_vars, rhs_vars)
             vars = setdiff(vars, exceptions)
 
-            lhs_rewritten = replace_symbols_except(lhs, exceptions, particles_sym, N_sym)
+            lhs_rewritten = replace_symbols_except(lhs, exceptions, symbols)
             args_rewritten = map(args) do arg
-                replace_symbols_except(arg, exceptions, particles_sym, N_sym)
+                replace_symbols_except(arg, exceptions, symbols)
             end
 
             e = quote
@@ -71,7 +71,7 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
         end)
             e = quote
                 if $condition
-                    $(build_logpdf_body(body, exceptions, particles_sym, N_sym))
+                    $(build_logpdf_body(body, exceptions, symbols))
                 end
             end
             append!(code.args, e.args)
@@ -86,7 +86,7 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             end
             e = quote
                 for $loop_var in $collection
-                    $(build_logpdf_body(loop_body, exceptions, particles_sym, N_sym))
+                    $(build_logpdf_body(loop_body, exceptions, symbols))
                 end
             end
             for var in loop_vars
@@ -103,19 +103,17 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
     return code
 end
 
-function build_logpdf(body, exceptions, N_sym)
-
-    particles_sym = :particles
+function build_logpdf(body, exceptions, symbols)
 
     return quote
-        function smc_logpdf($particles_sym, targets, target_depth)
+        function smc_logpdf($(symbols.particles), targets, target_depth)
 
-            N = WeightedSampling.nrow($particles_sym)
+            N = WeightedSampling.nrow($(symbols.particles))
 
             scores = zeros(N)
             tracker = 1
 
-            $(build_logpdf_body(body, exceptions, particles_sym, N_sym))
+            $(build_logpdf_body(body, exceptions, symbols))
 
             return scores
         end
