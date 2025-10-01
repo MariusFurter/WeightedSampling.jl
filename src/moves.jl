@@ -108,9 +108,9 @@ function build_logpdf(body, exceptions, symbols)
     return quote
         function smc_logpdf($(symbols.particles), targets, target_depth)
 
-            N = WeightedSampling.nrow($(symbols.particles))
+            $(symbols.N) = WeightedSampling.nrow($(symbols.particles))
 
-            scores = zeros(N)
+            scores = zeros($(symbols.N))
             tracker = 1
 
             $(build_logpdf_body(body, exceptions, symbols))
