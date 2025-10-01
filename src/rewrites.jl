@@ -331,8 +331,6 @@ function extract_kwarg_names(kwargs)
     return kwarg_names
 end
 
-const SMCSymbols = @NamedTuple{particles::Symbol, N::Symbol, weights_scratch::Symbol, current_depth::Symbol, progress_meter::Symbol}
-
 macro smc(expr)
     if @capture(expr, function name_(args__; kwargs__)
         body__
@@ -357,13 +355,13 @@ macro smc(expr)
 
     name! = Symbol(name, "!")
 
-    symbols = SMCSymbols((
+    symbols = (
         particles=:particles,
         N=gensym(:N),
         weights_scratch=gensym(:weights_scratch),
         current_depth=gensym(:current_depth),
         progress_meter=gensym(:progress_meter)
-    ))
+    )
 
     return esc(quote
         function $name!($(args...); $(kwargs...),
