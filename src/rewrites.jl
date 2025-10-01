@@ -1,16 +1,3 @@
-# Todos:
-# - Think about variable scopes. Maybe replace symbols in constructed function body with gensyms, or use let blocks.
-
-# - ess & diversity monitoring by including variables that track these quantities. These can then be used in the model, e.g. to only conditionally move when certain criteria are met.
-
-# - Recursion & composition with other smc functions more generally. Wrap smc function in type and have a case distinction in code.
-# -> Check that @smc generated function works with vector arguments
-# -> Add a way to specify return values
-# -> How does evidence compose?
-# -> What about moves?
-# -> then use mutating function on current particles / could also use a non-mutating version if we don't want to keep track of the intermediate values. Probably should be black-boxed.
-# -> Find a way to introduce namespacing in a controlled way (might be unnecessary with black-boxing)
-
 function extract_symbols(expr)
     if expr isa Symbol
         return Set{Symbol}([expr])
@@ -22,6 +9,25 @@ function extract_symbols(expr)
         end
     else
         return Set{Symbol}()
+    end
+end
+
+function extract_loop_vars(loop_var)
+    """Extract all symbols from a loop variable, handling both single symbols and tuple destructuring."""
+    if loop_var isa Symbol
+        return [loop_var]
+    elseif loop_var isa Expr && loop_var.head == :tuple
+        vars = Symbol[]
+        for arg in loop_var.args
+            if arg isa Symbol
+                push!(vars, arg)
+            else
+                error("Only symbols are supported in tuple destructuring for loops: $arg")
+            end
+        end
+        return vars
+    else
+        error("Unsupported loop variable format: $loop_var")
     end
 end
 
@@ -42,14 +48,22 @@ function replace_symbols_except(expr, exceptions, particles_sym, N_sym)
             end
         elseif expr.head == :curly
             if @capture(expr, output_symbol_{index_})
-                output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
-                return :($particles_sym[!, $output_expr])
+                if output_symbol in exceptions
+                    return :(fill($expr, $N_sym))  # Broadcast the templated expression to all particles
+                else
+                    output_expr = :(Symbol($(QuoteNode(output_symbol)), $index))
+                    return :($particles_sym[!, $output_expr])
+                end
             else
                 error("Error while parsing $expr")
             end
         elseif expr.head == :ref
             if @capture(expr, output_symbol_[index_])
-                return :(getindex.($particles_sym[!, $(QuoteNode(output_symbol))], $index))
+                if output_symbol in exceptions
+                    return :(fill($expr, $N_sym))  # Broadcast the indexed value to all particles
+                else
+                    return :(getindex.($particles_sym[!, $(QuoteNode(output_symbol))], $index))
+                end
             else
                 error("Error while parsing $expr")
             end
@@ -272,13 +286,18 @@ function build_smc(body, exceptions, particles_sym, N_sym)
             loop_body__
         end)
 
-            push!(exceptions, loop_var)
+            loop_vars = extract_loop_vars(loop_var)
+            for var in loop_vars
+                push!(exceptions, var)
+            end
             e = quote
                 for $loop_var in $collection
                     $(build_smc(loop_body, exceptions, particles_sym, N_sym))
                 end
             end
-            delete!(exceptions, loop_var)
+            for var in loop_vars
+                delete!(exceptions, var)
+            end
             append!(code.args, e.args)
 
         elseif @capture(statement, lhs_ << f_(args__))

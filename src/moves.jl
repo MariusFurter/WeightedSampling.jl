@@ -1,7 +1,3 @@
-# Bonus: Add check that the same variable is not used multiple times. E.g keep a list of variables used in sampling statements up until now and check that the current variable is not in that list.
-
-### Future: Think about adding pseudo-marginal sampling when some variables are overwritten.
-
 function build_logpdf_body(body, exceptions, particles_sym, N_sym)
     code = quote end
 
@@ -84,13 +80,18 @@ function build_logpdf_body(body, exceptions, particles_sym, N_sym)
             loop_body__
         end)
 
-            push!(exceptions, loop_var)
+            loop_vars = extract_loop_vars(loop_var)
+            for var in loop_vars
+                push!(exceptions, var)
+            end
             e = quote
                 for $loop_var in $collection
                     $(build_logpdf_body(loop_body, exceptions, particles_sym, N_sym))
                 end
             end
-            delete!(exceptions, loop_var)
+            for var in loop_vars
+                delete!(exceptions, var)
+            end
             append!(code.args, e.args)
 
         else
