@@ -1,5 +1,7 @@
 # WeightedSampling.jl - TODOs
 
+## Convenience
+
 ## Core architecture
 - [ ] **Improve variable scoping**: Replace symbols in constructed function body with gensyms, or use let blocks to prevent naming conflicts
 - [ ] **Variable reuse detection**: Add check that the same variable is not used multiple times in sampling statements when moves are used.

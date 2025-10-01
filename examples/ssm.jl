@@ -1,5 +1,3 @@
-using Revise
-
 # 2D State space model
 using WeightedSampling
 using DataFrames
@@ -30,6 +28,22 @@ for t in 1:T
     push!(vs, new_v)
 end
 
+# State space model with SMC
+@smc function ssm(obs)
+    x1 .= [0.0, 0.0]
+    v .= [1.0, 0.0]
+    for (i, o) in enumerate(obs)
+        x{i + 1} .= x{i} + v
+        dv ~ MvNormal([0, 0], Diagonal([0.1, 0.1]))
+        v .= v + dv
+        o => MvNormal(x{i + 1}, Diagonal([0.5, 0.5]))
+    end
+end
+
+particles, evidence = ssm(obs, n_particles=1_000)
+describe_particles(particles)
+
+# Plot sampled trajectories
 function plot_trajectory(xs, obs, filtered_particles=nothing)
     fig = Figure(resolution=(500, 400))
     ax = Axis(fig[1, 1], xlabel="x", ylabel="y", title="2D State Space Model")
@@ -50,15 +64,14 @@ function plot_trajectory(xs, obs, filtered_particles=nothing)
         x_cols = sort(x_cols, by=x -> parse(Int, string(x)[2:end]))
 
         if !isempty(x_cols)
-            # Plot a subset of particle trajectories with low alpha
-            n_particles = nrow(filtered_particles)
-            n_to_plot = min(200, n_particles)
-            particle_indices = 1:div(n_particles, n_to_plot):n_particles
+            # Sample a subset of particles to plot
+            n_to_plot = min(200, nrow(filtered_particles))
+            sampled_particles = sample_particles(filtered_particles, n_to_plot)
 
-            for i in particle_indices
+            for i in 1:n_to_plot
                 # Extract trajectory for particle i
-                traj_x1 = [filtered_particles[i, col][1] for col in x_cols]
-                traj_x2 = [filtered_particles[i, col][2] for col in x_cols]
+                traj_x1 = [sampled_particles[i, col][1] for col in x_cols]
+                traj_x2 = [sampled_particles[i, col][2] for col in x_cols]
                 lines!(ax, traj_x1, traj_x2, color=(:green, 0.05), linewidth=1)
             end
 
@@ -71,19 +84,5 @@ function plot_trajectory(xs, obs, filtered_particles=nothing)
     return fig
 end
 
-@smc function ssm(obs)
-    x1 .= [0.0, 0.0]
-    v .= [1.0, 0.0]
-    for (i, o) in enumerate(obs)
-        x{i + 1} .= x{i} + v
-        dv ~ MvNormal([0, 0], Diagonal([0.1, 0.1]))
-        v .= v + dv
-        o => MvNormal(x{i + 1}, Diagonal([0.5, 0.5]))
-    end
-end
-
-particles, evidence = ssm(obs, n_particles=1_000)
-
-# Plot the trajectory
 fig = plot_trajectory(xs, obs, particles)
 display(fig)
