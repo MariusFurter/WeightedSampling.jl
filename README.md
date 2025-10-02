@@ -80,7 +80,7 @@ The core of **WeightedSampling.jl** is the `@smc` macro, which transforms a Juli
 - **Particle assignment:** `x .= expr` broadcasts `expr` to all particles.
 - **Sampling:** `x ~ SMCKernel(args)` samples from a distribution or kernel and updates particle weights.
 - **Observation:** `expr => SMCKernel(args)` conditions on observed data, updating weights accordingly.
-- **MCMC Move:** `x << Proposal(args)` applies MH moves to particles.
+- **MH Move:** `x << Proposal(args)` applies Metropolis-Hastings moves to particles.
 
 SMC models defined with `@smc` are compiled to two main functions:
 - `model!(args...; particles, ...)` *(in-place update of existing particles)*
