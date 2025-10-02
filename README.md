@@ -4,7 +4,7 @@
 
 **WeightedSampling.jl** provides a macro-based interface for Sequential Monte Carlo (SMC) in Julia. It enables concise, readable probabilistic programs that are transformed into efficient particle filters with resampling and weight management.
 
-## Features
+**Features:**
 
 - Intuitive `@smc` macro for SMC model specification
 - Automatic weight management and resampling
