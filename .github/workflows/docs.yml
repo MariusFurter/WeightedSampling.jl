@@ -43,6 +43,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         shell: julia --project=docs --color=yes {0}
-        run: |
-          using Documenter: deploydocs
-          include("docs/make.jl")
+        run: include("docs/make.jl")

@@ -23,7 +23,7 @@ Pkg.add("https://github.com/MariusFurter/WeightedSampling.jl")
 
 ## Quick Start
 
-For detailed information, see the [`Usage Guide`](docs/usage_guide.md). Additional examples are available in [`/examples/`](examples/). 
+For detailed information, see the [`documentation`](https://MariusFurter.github.io/WeightedSampling.jl). Additional examples are available in [`/examples/`](examples/). 
 
 ### Linear Regression with MH Moves
 
