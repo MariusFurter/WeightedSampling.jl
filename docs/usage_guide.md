@@ -88,7 +88,7 @@ Additional features:
 Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
 
 $$
-\int_{w} \text{weighter}(w \mid \text{args}, x) \: \text{sampler}(x \mid \text{args}) \: dw
+\int_{w} \text{weighter}(w \mid \text{args}, x) \text{sampler}(x \mid \text{args}) dw
 $$
 
 The `logpdf` is the log-density of this kernel.

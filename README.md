@@ -45,25 +45,32 @@ end
 particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
 describe_particles(particles)
 ```
-<img src="examples/plots/linear_regression.png" width="400" alt="Linear regression posterior distribution">
+<div align="center">
+  <img src="examples/plots/linear_regression.png" width="400" alt="Linear regression posterior distribution">
+</div>
 
 ### Bootstrap Particle Filter
 
 ```julia
 @smc function ssm(observations)
-    I = [1 0; 0 1]
-    x .= [0.0, 0.0]
+    I = [1 0; 0 1]  # local variable
+    x .= [0.0, 0.0] # assign
     v .= [1.0, 0.0]
     for obs in observations
         x .= x + v
-        dv ~ MvNormal([0,0], 0.1*I)
+        dv ~ MvNormal([0,0], 0.1*I) # sample
         v .= v + dv
-        obs => MvNormal(x, 0.5*I)
+        obs => MvNormal(x, 0.5*I) # observe
     end
 end
+
+particles, evidence = ssm(observations, n_particles=1_000)
+describe_particles(particles)
 ```
 
-<img src="examples/plots/ssm.png" width="400" alt="Bootstrap filter 2D state space model">
+<div align="center">
+  <img src="examples/plots/ssm.png" width="400" alt="Bootstrap filter 2D state space model">
+</div>
 
 
 ## The `@smc` Macro
