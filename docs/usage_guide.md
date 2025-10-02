@@ -85,13 +85,13 @@ Additional features:
 - `weighter`: `(args..., sample) -> log_weight` — computes log weights (can be `nothing` for uniform)
 - `logpdf`: `(args..., sample) -> log_pdf` — evaluates log-density
 
-Every `SMCKernel` represents a stochastic kernel given by
+Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
 
 $$
-\int_x \text{weighter}(x \mid \text{args})\, f(x \mid \text{args})\, dx
+\int_{w} \text{weighter}(w \mid \text{args}, x) \: \text{sampler}(x \mid \text{args}) \: dw
 $$
 
-where $f$ is the density of the sampler. The `logpdf` is the log-density of this kernel.
+The `logpdf` is the log-density of this kernel.
 
 Default kernels are provided for major distributions from Distributions.jl (see [`src/smc_kernels.jl`](../src/smc_kernels.jl)), accessible by name in `@smc`. Custom kernels can be defined using `SMCKernel` and passed as named tuples to SMC functions.
 

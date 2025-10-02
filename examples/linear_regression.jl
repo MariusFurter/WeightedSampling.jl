@@ -55,7 +55,7 @@ end
 fig = plot_results(xs, ys, particles, α, β)
 display(fig)
 
-# Linear regression with SMC + MCMC moves
+# Linear regression with SMC + MCMC moves (requires fewer particles, even for vague priors)
 @smc function linear_regression_move(xs, ys)
     α ~ Normal(0, 10)
     β ~ Normal(0, 10)
