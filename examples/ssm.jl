@@ -2,7 +2,6 @@
 using WeightedSampling
 using DataFrames
 using CairoMakie
-using LinearAlgebra
 using Random
 Random.seed!(42)
 
@@ -30,13 +29,16 @@ end
 
 # State space model with SMC
 @smc function ssm(obs)
+    I = [1 0
+        0 1]
+
     x1 .= [0.0, 0.0]
     v .= [1.0, 0.0]
     for (i, o) in enumerate(obs)
         x{i + 1} .= x{i} + v
-        dv ~ MvNormal([0, 0], Diagonal([0.1, 0.1]))
+        dv ~ MvNormal([0, 0], 0.1 * I)
         v .= v + dv
-        o => MvNormal(x{i + 1}, Diagonal([0.5, 0.5]))
+        o => MvNormal(x{i + 1}, 0.5 * I)
     end
 end
 

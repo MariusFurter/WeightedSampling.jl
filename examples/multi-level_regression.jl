@@ -26,16 +26,16 @@ y = [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0]  # estimated treatment effects
     end
 end
 
-samples, evidence = eight_schools(J, y, σ, n_particles=1_000)
-describe_particles(samples)
+particles, evidence = eight_schools(J, y, σ, n_particles=1_000)
+describe_particles(particles)
 
-function plot_theta_densities(samples, lower, upper)
+function plot_theta_densities(particles, lower, upper)
     fig = Figure(resolution=(400, 400))
     ax = Axis(fig[1, 1], xlabel="θ", ylabel="Density", title="Posterior Densities of θ")
 
     for j in 1:J
-        theta_j = [θ[j] for θ in samples.θ]
-        density!(ax, theta_j, weights=exp_norm(samples.weights), label="θ[$j]",
+        theta_j = [θ[j] for θ in particles.θ]
+        density!(ax, theta_j, weights=exp_norm(particles.weights), label="θ[$j]",
             offset=(j - 1) * 0.2, direction=:x)
     end
 
@@ -45,6 +45,6 @@ function plot_theta_densities(samples, lower, upper)
     return fig
 end
 
-fig = plot_theta_densities(samples, -20, 30)
+fig = plot_theta_densities(particles, -20, 30)
 display(fig)
 

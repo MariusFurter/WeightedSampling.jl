@@ -32,6 +32,8 @@ function extract_loop_vars(loop_var)
 end
 
 function replace_symbols_except(expr, exceptions, symbols)
+    expr = MacroTools.striplines(expr)
+
     if expr isa Symbol && !(expr in exceptions)
         return :($(symbols.particles)[!, $(QuoteNode(expr))])
     elseif expr isa Expr
@@ -76,6 +78,8 @@ function replace_symbols_except(expr, exceptions, symbols)
 end
 
 function replace_symbols_in(expr, to_replace, symbols)
+    expr = MacroTools.striplines(expr)
+
     if expr isa Symbol && expr in to_replace
         return :($(symbols.particles)[!, $(QuoteNode(expr))])
     elseif expr isa Expr

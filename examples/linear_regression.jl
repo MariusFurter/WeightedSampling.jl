@@ -21,11 +21,11 @@ ys = α .+ β .* xs .+ σ * randn(length(xs))
     end
 end
 
-samples, evidence = linear_regression(xs, ys, n_particles=10_000)
-describe_particles(samples)
+particles, evidence = linear_regression(xs, ys, n_particles=10_000)
+describe_particles(particles)
 
 
-function plot_results(xs, ys, samples, α_true, β_true; title="Linear Regression SMC Sampling")
+function plot_results(xs, ys, particles, α_true, β_true; title="Linear Regression SMC Sampling")
     fig = Figure(resolution=(400, 300))
     ax = Axis(fig[1, 1], xlabel="x", ylabel="y", title=title)
 
@@ -33,7 +33,7 @@ function plot_results(xs, ys, samples, α_true, β_true; title="Linear Regressio
     y_true = α_true .+ β_true .* x_range
 
     n_lines = 100
-    sampled_particles = sample_particles(samples, n_lines)
+    sampled_particles = sample_particles(particles, n_lines)
 
     for i in 1:n_lines
         α_sample = sampled_particles.α[i]
@@ -52,7 +52,7 @@ function plot_results(xs, ys, samples, α_true, β_true; title="Linear Regressio
     fig
 end
 
-fig = plot_results(xs, ys, samples, α, β)
+fig = plot_results(xs, ys, particles, α, β)
 display(fig)
 
 # Linear regression with SMC + MCMC moves
@@ -69,9 +69,9 @@ display(fig)
     end
 end
 
-samples, evidence = linear_regression_move(xs, ys, n_particles=1_000)
-describe_particles(samples)
+particles, evidence = linear_regression_move(xs, ys, n_particles=1_000)
+describe_particles(particles)
 
-fig = plot_results(xs, ys, samples, α, β)
+fig = plot_results(xs, ys, particles, α, β)
 display(fig)
 
