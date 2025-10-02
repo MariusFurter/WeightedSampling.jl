@@ -120,6 +120,29 @@ function build_logpdf(body, exceptions, symbols)
     end
 end
 
+"""
+    diversity(particles, targets)
+
+Compute particle diversity as the fraction of unique particle combinations.
+
+# Arguments
+- `particles::DataFrame`: DataFrame with particle samples
+- `targets`: Vector of column names to consider for diversity calculation
+
+# Returns
+Float64 between 0 and 1, where:
+- 1.0 = all particles in subset are unique
+- 0.0 = all particles in subset are identical
+
+# Examples
+
+```julia
+# Conditional move based on diversity
+if diversity(particles, [:x]) < 0.5
+    x << autoRW()
+end
+```
+"""
 function diversity(particles, targets)
     N = nrow(particles)
     return nrow(unique(particles[!, targets])) / N

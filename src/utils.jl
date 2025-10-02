@@ -10,7 +10,20 @@ function exp_norm!(weights::Vector{Float64})
 end
 
 """
-Exponentiate and normalize the log weights, returning a new vector.
+    exp_norm(weights::Vector{Float64})
+
+Exponentiate and normalize log weights.
+
+# Arguments
+- `weights::Vector{Float64}`: Vector of log weights.
+
+# Returns
+Vector of normalized probabilities.
+
+# Examples
+```julia
+exp_norm(particles.weights)
+```
 """
 function exp_norm(weights::Vector{Float64})
     max_weight = maximum(weights)
@@ -23,7 +36,26 @@ expectation(values, weights) = sum(values .* exp_norm(weights))
 
 
 """
-Compute the weighted expectation of an anonymous function `f` with respect to particle samples. Argument names of `f` reference the corresponding particle values.
+    @E(f, particles)
+
+Compute the weighted expectation of an anonymous function `f` with respect to particle samples.
+
+# Arguments
+- `f`: Anonymous function where argument names reference particle column names
+- `particles`: DataFrame with particle samples and `:weights` column
+
+# Returns  
+Weighted expectation ``\\mathbb{E}[f] = \\sum_{i=1}^N w_i f(x
+p_i)``, where ``w_i`` are normalized particle weights.
+
+# Examples
+```julia
+# Expectation of `particles.x`
+posterior_mean = @E(x -> x, particles)
+
+# Expectation of `sin.(particles.x) + cos.(particles.y)`
+expectation = @E((x,y) -> sin(x) + cos(y), particles)
+```
 """
 macro E(f, particles)
     if @capture(f, arg_Symbol -> body_)
@@ -90,7 +122,22 @@ end
 
 
 """
+    sample_particles(particles::DataFrame, n::Int; replace::Bool=true)
+
 Randomly sample `n` rows from a DataFrame of weighted particles according to their log weights.
+
+# Arguments
+- `particles::DataFrame`: DataFrame with particle samples and `:weights` column containing log weights
+- `n::Int`: Number of samples to draw
+- `replace::Bool=true`: Whether to sample with replacement
+
+# Returns
+DataFrame with `n` sampled particles.
+
+# Examples
+```julia
+posterior_samples = sample_particles(particles, 1000)
+```
 """
 function sample_particles(particles::DataFrame, n::Int; replace::Bool=true)
     if !hasproperty(particles, :weights)
@@ -114,7 +161,31 @@ end
 
 
 """
-Compute weighted descriptive statistics for particles.
+    describe_particles(particles::DataFrame; cols=nothing)
+
+Compute weighted descriptive statistics for particle variables.
+
+# Arguments
+- `particles::DataFrame`: DataFrame with particle samples and `:weights` column containing log weights
+- `cols=nothing`: Vector of column names to analyze (default: all numeric columns except `:weights`)
+
+# Returns
+DataFrame with columns:
+- `variable::Symbol`: Variable name  
+- `mean`: Weighted mean (scalar or vector)
+- `median`: Weighted median (scalar or vector)
+- `std`: Weighted standard deviation (scalar or vector)
+- `min`: Minimum value (scalar or vector)
+- `max`: Maximum value (scalar or vector) 
+- `ess::Float64`: Effective sample size ``\\text{ESS} = \\frac{1}{\\sum_{i=1}^N w_i^2}``
+
+# Examples
+```julia
+describe_particles(particles)
+```
+
+The function handles both scalar and vector-valued particle variables. For vector variables,
+statistics are computed component-wise and returned as vectors.
 """
 function describe_particles(particles::DataFrame; cols=nothing)
     if !hasproperty(particles, :weights)
@@ -177,7 +248,7 @@ function describe_particles(particles::DataFrame; cols=nothing)
     end
 
     # Compute effective sample size once
-    ess_val = 1.0 / sum(normalized_weights .^ 2)
+    ess_val = length(normalized_weights) * WeightedSampling.ess_perc(normalized_weights)
 
     # Initialize result vectors
     variables = Symbol[]

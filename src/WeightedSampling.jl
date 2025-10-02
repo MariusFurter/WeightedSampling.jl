@@ -7,7 +7,7 @@ using ProgressMeter
 using StaticArrays
 using StatsBase
 
-export SMCKernel, @smc, @E, exp_norm, diversity, sample_particles, describe_particles
+export SMCKernel, @smc, @E, exp_norm, diversity, sample_particles, describe_particles, RW, autoRW
 
 include("rewrites.jl")
 include("resampling.jl")

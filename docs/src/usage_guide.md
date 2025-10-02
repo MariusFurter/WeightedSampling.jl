@@ -1,5 +1,3 @@
-# WeightedSampling.jl Usage Guide
-
 `WeightedSampling.jl` provides the `@smc` macro for concise specification of Sequential Monte Carlo (SMC) sampling schemes. It transforms probabilistic programs into efficient particle filters with automatic resampling and weight management. It excels at dynamic and moderate-dimensional statistical models (< 1k parameters).
 
 **Note:** This package is in early development. Use with caution.
@@ -12,7 +10,9 @@ The package is not yet registered in the Julia General Registry. Install directl
 add https://github.com/MariusFurter/WeightedSampling.jl
 ```
 
-## Quick Start
+## Quick start
+
+### Linear regression
 
 ```julia
 using WeightedSampling
@@ -25,11 +25,14 @@ using WeightedSampling
     end
 end
 
+xs = 1:10
+ys = 1-0 .- 0.5 .* xs .+ 0.5 * randn(length(xs))
+
 particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
 describe_particles(particles)
 ```
 
-Example: Bootstrap particle filter
+### Bootstrap particle filter
 
 ```julia
 @smc function ssm(observations)
@@ -63,7 +66,7 @@ Within `@smc`, the following operators are available:
 - **Particle assignment:** `x .= expr` broadcasts `expr` to `particles.x`.
 - **Sampling:** `x ~ SMCKernel(args)` samples to `particles.x` and updates weights.
 - **Observation:** `expr => SMCKernel(args)` updates weights based on observing `expr`.
-- **MCMC Move:** `x << Proposal(args)` performs Metropolis-Hastings moves on `particles.x`.
+- **MH Move:** `x << Proposal(args)` performs Metropolis-Hastings moves on `particles.x`.
 Both `expr` and `args` can reference `particles.x` as `x`.
 
 Regular Julia constructs are supported:
@@ -77,7 +80,7 @@ Additional features:
 - **Array indexing:** `x[i]` maps over `particles.x`.
 - **Index interpolation:** `x{i}` creates dynamic variable names (e.g., `x1`, `x2`, ...).
 
-## SMCKernel Type
+## SMCKernel type
 
 `SMCKernel` represents a (random weight) importance sampler:
 
@@ -87,17 +90,17 @@ Additional features:
 
 Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
 
-$$
+```math
 \int_{w} \text{weighter}(w \mid \text{args}, x) \text{sampler}(x \mid \text{args}) dw
-$$
+```
 
 The `logpdf` is the log-density of this kernel.
 
-Default kernels are provided for major distributions from Distributions.jl (see [`src/smc_kernels.jl`](../src/smc_kernels.jl)), accessible by name in `@smc`. Custom kernels can be defined using `SMCKernel` and passed as named tuples to SMC functions.
+Default kernels are provided for major distributions from Distributions.jl (see `smc_kernels.jl`), accessible by name in `@smc`. Custom kernels can be defined using `SMCKernel` and passed as named tuples to SMC functions.
 
-## MCMC Moves
+## MH moves
 
-Resampling reduces particle diversity for early-sampled variables. MCMC moves can restore diversity. Example:
+Resampling reduces particle diversity for early-sampled variables. MH moves can restore diversity. Example:
 
 ```julia
 @smc function linear_regression(xs, ys)
@@ -122,7 +125,7 @@ Moves are computationally expensive. Use them conditionally, based on the state 
 - `ess_perc`: Current effective sample size (percent)
 - `evidence`: Current accumulated log-probability
 
-MCMC kernels are functions `Proposal(particles, targets, args...)` returning a DataFrame of proposals and a vector of log proposal ratios.
+MH kernels are functions `Proposal(particles, targets, args...)` returning a DataFrame of proposals and a vector of log proposal ratios.
 
 Available proposals:
 
@@ -135,7 +138,7 @@ Joint updates are supported:
 (α, β) << autoRW()
 ```
 
-## Utility Functions
+## Utility functions
 
 - `sample_particles(particles, n; replace=false)`: Draw `n` samples by weight
 - `describe_particles(particles)`: Summarize all variables
@@ -150,14 +153,14 @@ Examples:
 @E((x, y) -> x + y, particles) # E[x + y]
 ```
 
-## Performance Tips
+## Performance tips
 
 - Main bottleneck is resampling; many distinct variables (>10k) slow performance.
 - Overwriting particle variables marginalizes them.
 - Use static, concrete types (e.g., `StaticArrays.SVector`) for efficiency.
 - Moves are expensive; use only when necessary.
 
-## Saving Particle History
+## Saving particle history
 Monitor SMC progress by saving snapshots:
 
 ```julia

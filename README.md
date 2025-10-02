@@ -42,6 +42,9 @@ using WeightedSampling
     end
 end
 
+xs = 1:10
+ys = 1-0 .- 0.5 .* xs .+ 0.5 * randn(length(xs))
+
 particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
 describe_particles(particles)
 ```
@@ -63,9 +66,6 @@ describe_particles(particles)
         obs => MvNormal(x, 0.5*I) # observe
     end
 end
-
-particles, evidence = ssm(observations, n_particles=1_000)
-describe_particles(particles)
 ```
 
 <div align="center">

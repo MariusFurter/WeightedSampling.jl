@@ -1,3 +1,46 @@
+"""
+    SMCKernel{S,L,W}
+
+Represents a (random weight) importance sampler.
+
+# Fields
+- `sampler::S`: Function `(args...) -> sample` that generates samples
+- `weighter::W`: Function `(args..., sample) -> log_weight` that computes log weights. Can be random. Use `nothing` for uniform weights.
+- `logpdf::L`: Function `(args..., sample) -> log_density` that evaluates log-density
+
+Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
+```math
+\\int_{w} \\text{weighter}(w \\mid \\text{args}, x) \\text{sampler}(x \\mid \\text{args}) dw
+```
+The `logpdf` function is the density of this kernel.
+
+# Constructor
+```julia
+SMCKernel(sampler, weighter, logpdf)
+```
+
+# Examples
+```julia
+using Distributions
+
+# Custom truncated normal kernel
+TruncatedNormal = SMCKernel(
+    (μ, σ, a, b) -> rand(Truncated(Normal(μ, σ), a, b)),
+    nothing,  # uniform weights
+    (μ, σ, a, b, x) -> logpdf(Truncated(Normal(μ, σ), a, b), x)
+)
+
+# Use in @smc model
+@smc function model(data)
+    θ ~ TruncatedNormal(0.0, 1.0, -2.0, 2.0)
+    for y in data
+        y => Normal(θ, 0.5)
+    end
+end
+```
+
+See also: [`@smc`](@ref)
+"""
 struct SMCKernel{S,L,W}
     sampler::S
     weighter::W

@@ -335,6 +335,77 @@ function extract_kwarg_names(kwargs)
     return kwarg_names
 end
 
+"""
+    @smc function model(args...)
+        # probabilistic program
+    end
+
+Transform a Julia function into an SMC sampler.
+
+# Generated Functions
+The macro generates two functions:
+- `model(args...; n_particles=1000, ...)`: Creates new particles and returns `(particles, evidence)`
+- `model!(args...; particles, ...)`: Updates existing particles in-place and returns evidence
+
+where
+
+- `args...`: Model-specific arguments (data, hyperparameters, etc.)
+- `n_particles::Int=1000`: Number of particles to create
+- `particles::DataFrame`: Existing particle DataFrame to update in-place
+
+Both functions accept the following keyword arguments:
+
+- `ess_perc_min::Float64=0.5`: Minimum effective sample size percentage for resampling trigger
+- `kernels::NamedTuple=nothing`: Custom SMC kernels (merged with defaults)
+- `proposals::NamedTuple=nothing`: Custom proposal kernels for MH moves (merged with defaults)
+- `compute_evidence::Bool=true`: Whether to compute evidence (log marginal likelihood)
+- `show_progress::Bool=true`: Whether to show progress bar
+
+
+# Operators
+Within `@smc`, the following operators are available:
+
+- **Particle assignment:** `x .= expr` broadcasts `expr` to `particles.x`.
+- **Sampling:** `x ~ SMCKernel(args)` samples to `particles.x` and updates weights.
+- **Observation:** `expr => SMCKernel(args)` updates weights based on observing `expr`.
+- **MH Move:** `x << Proposal(args)` performs Metropolis-Hastings moves on `particles.x`.
+Both `expr` and `args` can reference `particles.x` as `x`.
+
+Regular Julia constructs are supported:
+
+- **Assignment `=`:** Creates local variables (not stored in `particles`).
+- **For loops:** Supports `for i in collection` and tuple destructuring, where `collection` does not involve particle variables.
+- **Conditionals:** `if condition` where `condition` does not involve particle variables.
+
+Additional features:
+
+- **Array indexing:** `x[i]` maps over `particles.x`.
+- **Index interpolation:** `x{i}` creates dynamic variable names (e.g., `x1`, `x2`, ...).
+
+
+# Examples
+```julia
+# Linear regression with moves
+@smc function linear_regression(xs, ys)
+    α ~ Normal(0, 10)
+    β ~ Normal(0, 10)
+    for (x, y) in zip(xs, ys)
+        y => Normal(α + β * x, 1.0)
+        if resampled
+            (α, β) << autoRW()
+        end
+    end
+end
+
+xs = 1:10
+ys = 1-0 .- 0.5 .* xs .+ 0.5 * randn(length(xs))
+
+particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
+describe_particles(particles)
+```
+
+See also: [`SMCKernel`](@ref)
+"""
 macro smc(expr)
     if @capture(expr, function name_(args__; kwargs__)
         body__

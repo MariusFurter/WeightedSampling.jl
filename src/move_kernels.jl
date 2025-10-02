@@ -1,6 +1,30 @@
-## Proposal kernel should take particles and targets as input
-## and return a df of suggested changes and a vector of log scores representing q(x_old | x_new)/q(x_new | x_old).
+"""
+    RW(particles, targets, step_size)
 
+Symmetric random walk proposal kernel with variance `step_size`.
+
+# Arguments
+- `particles::DataFrame`: Current particle set
+- `targets::Vector{Symbol}`: Variable names to update
+- `step_size`: Step size for random walk
+
+# Returns
+- `proposals::DataFrame`: Proposed new values for target variables
+- `log_ratios::Vector{Float64}`: Log proposal ratios (zero since proposal is symmetric)
+
+# Examples  
+```julia
+@smc function model()
+    α ~ Normal(0, 10)
+    β ~ Normal(0, 10)
+    
+    α << RW(0.1)
+    (α, β) << RW(0.1)
+end
+```
+
+See also: [`@smc`](@ref)
+"""
 function RW(particles, targets, step_size)
     # Gaussian RW independent Gaussian steps of step_size
     N = nrow(particles)
@@ -21,6 +45,43 @@ function RW(particles, targets, step_size)
     return df, zeros(N)
 end
 
+"""
+    autoRW(particles, targets, min_step=1e-3)
+
+Adaptive random walk proposal kernel with empirically calibrated covariance.
+
+# Arguments
+- `particles::DataFrame`: Current particle set  
+- `targets::Vector{Symbol}`: Variable names to update
+- `min_step=1e-3`: Minimum step size to prevent singular covariance
+
+# Returns
+- `proposals::DataFrame`: Proposed new values for target variables
+- `log_ratios::Vector{Float64}`: Log proposal ratios (zero since proposal is symmetric)
+
+# Description
+Performs adaptive random walk using the empirical covariance of target particles:
+```math
+x^{\\text{new}} = x^{\\text{old}} + \\epsilon, \\quad \\epsilon \\sim \\mathcal{N}(0, \\lambda \\Sigma)
+```
+where:
+- `` \\lambda = 2.38 d^(-1/2) `` is the optimal scaling factor for ``d``-dimensional problems
+- ``\\Sigma`` is the weighted empirical covariance matrix of the target particles
+- Covariance elements are replaced with `min_step` if they are zero
+
+# Examples  
+```julia
+@smc function model()
+    α ~ Normal(0, 10)
+    β ~ Normal(0, 10)
+    
+    α << autoRW()
+    (α, β) << autoRW()
+end
+```
+
+See also: [`@smc`](@ref)
+"""
 function autoRW(particles, targets, min_step=1e-3)
     # Gaussian RW with covariance λΣ
     # where λ = 2.38 d^-1/2 and Σ is the empirical covariance matrix of the target particles
@@ -52,13 +113,7 @@ function autoRW(particles, targets, min_step=1e-3)
     return df, zeros(N)
 end
 
-function Dummy(particles, targets)
-    # Dummy proposal kernel that does nothing
-    return DataFrame(), zeros(nrow(particles))
-end
-
 default_proposals = (
-    Dummy=Dummy,
     RW=RW,
     autoRW=autoRW,
 )

@@ -15,7 +15,7 @@
 - [ ] **Move handling**: Define how moves should work in composed functions
 
 ## Documentation
-- [ ] **API documentation**: Add documentation with examples
+
 
 ## Testing & Validation
 - [ ] **Expand test coverage**: Add more comprehensive tests
