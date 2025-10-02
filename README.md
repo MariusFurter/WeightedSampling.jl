@@ -23,7 +23,7 @@ Pkg.add("https://github.com/MariusFurter/WeightedSampling.jl")
 
 ## Quick Start
 
-For detailed information, see the [`Quick Start Guide`](docs/quick_start.md). Additional examples are available in [`/examples/`](examples/). 
+For detailed information, see the [`Usage Guide`](docs/usage_guide.md). Additional examples are available in [`/examples/`](examples/). 
 
 ### Linear Regression with MH Moves
 
@@ -45,8 +45,7 @@ end
 particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
 describe_particles(particles)
 ```
-
-![Linear regression posterior](examples/plots/linear_regression.png)
+<img src="examples/plots/linear_regression.png" width="400" alt="Linear regression posterior distribution">
 
 ### Bootstrap Particle Filter
 
@@ -64,7 +63,8 @@ describe_particles(particles)
 end
 ```
 
-![Bootstrap Filter 2D State Space Model](examples/plots/ssm.png)
+<img src="examples/plots/ssm.png" width="400" alt="Bootstrap filter 2D state space model">
+
 
 ## The `@smc` Macro
 
