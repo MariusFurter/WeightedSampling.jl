@@ -44,5 +44,5 @@ jobs:
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         shell: julia --project=docs --color=yes {0}
         run: |
-          cd("docs")
-          include("make.jl")
+          using Pkg
+          include(joinpath(pwd(), "docs", "make.jl"))
