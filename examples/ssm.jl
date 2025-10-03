@@ -29,9 +29,7 @@ end
 
 # State space model with SMC
 @smc function ssm(obs)
-    I = [1 0
-        0 1]
-
+    I = [1 0; 0 1]
     x1 .= [0.0, 0.0]
     v .= [1.0, 0.0]
     for (i, o) in enumerate(obs)

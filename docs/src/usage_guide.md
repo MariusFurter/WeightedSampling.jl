@@ -35,15 +35,15 @@ describe_particles(particles)
 ### Bootstrap particle filter
 
 ```julia
-@smc function ssm(observations)
-    I = [1 0; 0 1]
-    x .= [0.0, 0.0]
+@smc function ssm(obs)
+    I = [1 0; 0 1]     # local variable
+    x1 .= [0.0, 0.0]   # assign
     v .= [1.0, 0.0]
-    for obs in observations
-        x .= x + v                   # update position
-        dv ~ MvNormal([0,0], 0.1*I)  # sample process noise
-        v .= v + dv                  # update velocity
-        obs => MvNormal(x, 0.5*I)    # observe
+    for (i, o) in enumerate(obs)
+        x{i + 1} .= x{i} + v             # dynamic variable creation
+        dv ~ MvNormal([0, 0], 0.1 * I)   # sample
+        v .= v + dv
+        o => MvNormal(x{i + 1}, 0.5 * I) # observe
     end
 end
 ```
