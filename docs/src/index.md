@@ -12,6 +12,8 @@
 - Flexible kernel and proposal definitions
 - Utility functions for particle analysis and sampling
 
+**Note:** This package is in early development. Use with caution. Feedback is welcome!
+
 ## Installation
 
 This package is not yet registered. Install directly from GitHub:
@@ -70,7 +72,3 @@ SMC models defined with `@smc` are compiled to two main functions:
 - [Usage Guide](usage_guide.md): Detailed usage instructions and examples
 - [API Reference](api.md): Complete API documentation
 - [Examples](examples.md): Additional examples and use cases
-
-## Note
-
-This package is in early development. Feedback is welcome!

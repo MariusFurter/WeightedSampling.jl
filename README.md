@@ -12,6 +12,8 @@
 - Flexible kernel and proposal definitions
 - Utility functions for particle analysis and sampling
 
+**Note:** This package is in early development. Use with caution. Feedback is welcome!
+
 ## Installation
 
 This package is not yet registered. Install directly from GitHub:
@@ -96,7 +98,4 @@ The package also provides utility functions for working with weighted samples.
 - `exp_norm(weights)` — Convert log-weights to normalized probabilities.
 - `@E(f, particles)` — Compute the weighted expectation of a function `f` over the particle variables.
 
----
-
-**Note:** This package is in early development. Feedback is welcome!
 
