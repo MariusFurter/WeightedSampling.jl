@@ -46,7 +46,7 @@ describe_particles(particles)
 # Plot sampled trajectories
 function plot_trajectory(xs, obs, filtered_particles=nothing)
     fig = Figure(resolution=(500, 400))
-    ax = Axis(fig[1, 1], xlabel="x", ylabel="y", title="Bootstrap Filter 2D State Space Model")
+    ax = Axis(fig[1, 1], xlabel="x[1]", ylabel="x[2]", title="Bootstrap Filter 2D State Space Model")
 
     # Plot true trajectory
     true_x1 = [x[1] for x in xs]
