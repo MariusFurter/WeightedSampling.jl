@@ -33,7 +33,6 @@ using WeightedSampling
 @smc function linear_regression_move(xs, ys)
     α ~ Normal(0, 10) # sample
     β ~ Normal(0, 10)
-
     for (x, y) in zip(xs, ys)
         y => Normal(α + β * x, 1.0) # observe
         if resampled
