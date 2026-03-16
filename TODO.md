@@ -23,6 +23,7 @@
 - [ ] **Type stability**: Add type stability checks
 
 ## Algorithm Extensions
+- [ ] **Constraint-aware MH proposals**: `autoRW()` should detect positivity constraints from the sampling distribution (e.g., `Exponential`, `HalfCauchy`, `LogNormal`) and automatically propose on log-scale. Currently, using `σ ~ Exponential(5)` with `σ << autoRW()` crashes with a `DomainError` when the random walk proposes negative values. Workaround: manual log-reparameterization (`log_σ ~ Normal(0,1)`, use `exp(log_σ)`). Options: auto-detect constraints from distribution support, provide `autoRW(transform=:log)`, or implement a general `TransformedRW()` for common constraint types (positive, unit interval, simplex).
 - [ ] **Additional resampling schemes**: Support more resampling algorithms
 - [ ] **Pseudo-marginal sampling**: Add support for pseudo-marginal sampling when some variables are overwritten
 - [ ] **Adaptive algorithms**: Implement adaptive SMC variants

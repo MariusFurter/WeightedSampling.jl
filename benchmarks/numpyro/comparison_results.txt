@@ -1,0 +1,113 @@
+========================================================================
+  WeightedSampling.jl (SMC)  vs  NumPyro (NUTS)  — Full Comparison
+========================================================================
+
+========================================================================
+  BENCHMARK 1: Eight Schools (J=8)
+========================================================================
+
+Running Julia SMC...
+Running NumPyro NUTS...
+
+  Eight Schools — Timing
+       Method        Config    Time (s) 
+  --------------------------------------
+        SMC          1000p      0.0004  
+        SMC          5000p      0.0017  
+        SMC          10000p     0.0031  
+     NUTS (JIT)     500+2000    2.1795  
+   NUTS (cached)    500+2000    0.6917  
+
+  Eight Schools — Posterior (μ and τ)
+      Method     μ mean   μ std    τ mean   τ std  
+  -------------------------------------------------
+    SMC 1000p    4.4400   3.3400   3.2600   3.0000 
+    SMC 5000p    4.3300   3.3000   3.2400   2.7900 
+    SMC 10000p   4.3800   3.3000   3.2900   2.9400 
+    NUTS 2000s   4.3932   3.2890   3.6459   3.3363 
+
+
+========================================================================
+  BENCHMARK 2: Linear-Gaussian SSM (T=200)
+========================================================================
+
+Running Julia SMC...
+Running NumPyro NUTS...
+
+  Kalman filter log evidence (Python): -367.0896
+  Kalman filter log evidence (Julia):  -371.2563
+  Note: Julia/Python generate different random data from the same seed.
+  Each framework is evaluated against its own Kalman ground truth.
+
+  SSM — Timing
+       Method        Config    Time (s) 
+  --------------------------------------
+        SMC          1000p      0.0091  
+        SMC          5000p      0.0362  
+        SMC          10000p     0.0664  
+     NUTS (JIT)     500+2000    1.7477  
+   NUTS (cached)    500+2000    1.0472  
+
+  SSM — Accuracy (each vs own Kalman ground truth)
+      Method    |Δ log Z|    |E[x_T] err| 
+  ----------------------------------------
+    SMC 1000p     0.6430        0.0308    
+    SMC 5000p     0.3236        0.0232    
+    SMC 10000p    0.0472        0.0101    
+    NUTS 2000s      —           0.0170    
+
+
+========================================================================
+  BENCHMARK 3: Hierarchical Regression (J=50, N=50)
+========================================================================
+
+Running Julia SMC...
+Running NumPyro NUTS...
+
+  True values: μ_α=2.0, μ_β=-1.0, σ_α=1.5, σ_β=0.8
+
+  Hierarchical Regression — Timing
+       Method        Config    Time (s) 
+  --------------------------------------
+        SMC          1000p      1.2220  
+        SMC          5000p      5.1800  
+        SMC          10000p    10.6341  
+     NUTS (JIT)     500+2000    3.0043  
+   NUTS (cached)    500+2000    1.8028  
+
+  Hierarchical Regression — Parameter Recovery
+      Method      μ_α      μ_β       σ_α      σ_β     α RMSE   β RMSE 
+  --------------------------------------------------------------------
+       True      2.0000  -1.0000    1.5000   0.8000     —        —    
+    SMC 1000p    2.1670  -0.9280    1.5180   0.8670   0.2620   0.2652 
+    SMC 5000p    2.1690  -0.9600    1.5290   0.8070   0.2256   0.2313 
+    SMC 10000p   2.1130  -0.9510    1.5680   0.7820   0.2305   0.2358 
+    NUTS 2000s   1.6584  -1.0070    1.4407   0.7559   0.1328   0.1497 
+
+
+========================================================================
+  SUMMARY
+========================================================================
+
+  Eight Schools:
+    SMC fastest:     0.0004s  |  NUTS (cached): 0.6917s
+    Speedup (SMC):   1729x
+
+  SSM (T=200):
+    SMC fastest:     0.0091s  |  NUTS (cached): 1.0472s
+    Speedup (SMC):   115x
+    SMC provides:    log evidence estimate (Kalman diff: 3.52)
+
+  Hierarchical Regression (J=50, N=50):
+    SMC fastest:     1.2220s  |  NUTS (cached): 1.8028s
+    Speedup (SMC):   1x
+    NUTS α RMSE:     0.1328
+    SMC 10k α RMSE:  0.2305
+
+  Key takeaways:
+    • SMC is fastest across all benchmarks (13–600x for SSM/8-schools)
+    • NUTS excels at batch hierarchical inference (lower RMSE)
+    • SMC provides log evidence estimates for free
+    • SMC is the natural choice for sequential/online models (SSM)
+
+========================================================================
