@@ -40,7 +40,7 @@ function generate_data(J, N)
     return group_data, alphas, betas
 end
 
-@smc function hier_regression(J, group_data)
+@model function hier_regression(J, group_data)
     μ_α ~ Normal(0, 10)
     μ_β ~ Normal(0, 10)
     log_σ_α ~ Normal(0, 1)

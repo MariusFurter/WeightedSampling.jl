@@ -54,7 +54,7 @@ function kalman_filter(ys)
     return filtered_means, log_evidence
 end
 
-@smc function ssm_filter(data, a, q, r)
+@model function ssm_filter(data, a, q, r)
     x ~ Normal(0.0, 1.0)
     for (t, y) in enumerate(data)
         x ~ Normal(a * x, q)

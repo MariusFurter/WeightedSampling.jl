@@ -9,7 +9,7 @@
 ## Composition and recursion of SMC samplers
 - [ ] **Recursion & composition**: Enable composition with other SMC functions more generally
 - [ ] **Type wrapping**: Wrap SMC function in type and implement case distinction in code
-- [ ] **Vector arguments**: Verify that @smc generated function works with vector arguments
+- [ ] **Vector arguments**: Verify that @model generated function works with vector arguments
 - [ ] **Return value specification**: Add a way to specify custom return values
 - [ ] **Evidence composition**: Determine how evidence should compose across function calls
 - [ ] **Move handling**: Define how moves should work in composed functions

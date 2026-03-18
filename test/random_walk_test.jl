@@ -19,7 +19,7 @@ function random_walk_test(; n_particles=10_000, T=10, max_error=1.5)
         push!(data, obs)
     end
 
-    @smc function random_walk_model(data)
+    @model function random_walk_model(data)
         x ~ Normal(0.0, 1.0)
         for (t, y) in enumerate(data)
             x ~ Normal(x, 1.0)

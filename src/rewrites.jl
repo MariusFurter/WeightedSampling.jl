@@ -336,7 +336,7 @@ function extract_kwarg_names(kwargs)
 end
 
 """
-    @smc function model(args...)
+    @model function model(args...)
         # probabilistic program
     end
 
@@ -363,7 +363,7 @@ Both functions accept the following keyword arguments:
 
 
 # Operators
-Within `@smc`, the following operators are available:
+Within `@model`, the following operators are available:
 
 - **Particle assignment:** `x .= expr` broadcasts `expr` to `particles.x`.
 - **Sampling:** `x ~ SMCKernel(args)` samples to `particles.x` and updates weights.
@@ -386,7 +386,7 @@ Additional features:
 # Examples
 ```julia
 # Linear regression with moves
-@smc function linear_regression(xs, ys)
+@model function linear_regression(xs, ys)
     α ~ Normal(0, 10)
     β ~ Normal(0, 10)
     for (x, y) in zip(xs, ys)
@@ -406,7 +406,7 @@ describe_particles(particles)
 
 See also: [`SMCKernel`](@ref)
 """
-macro smc(expr)
+macro model(expr)
     if @capture(expr, function name_(args__; kwargs__)
         body__
     end)

@@ -4,9 +4,9 @@ WeightedSampling.jl is a macro-based Sequential Monte Carlo (SMC) library for Ju
 
 ## Core Architecture
 
-### The `@smc` Macro System
+### The `@model` Macro System
 
-- **Primary abstraction**: `@smc function model_name(args...)` transforms Julia functions into SMC samplers
+- **Primary abstraction**: `@model function model_name(args...)` transforms Julia functions into SMC samplers
 - **Generates two functions**: `model(args...; n_particles=1000, ...)` (creates particles) and `model!(args...; particles, ...)` (in-place updates)
 - **Particle storage**: DataFrames where columns are variables and `particles.weights` stores log-weights
 - **Key operators**:
@@ -27,10 +27,10 @@ WeightedSampling.jl is a macro-based Sequential Monte Carlo (SMC) library for Ju
 
 ## Development Patterns
 
-### Writing `@smc` Models
+### Writing `@model` Models
 
 ```julia
-@smc function model_name(data, hyperparams)
+@model function model_name(data, hyperparams)
     # Local variables (not in particles)
     I = [1 0; 0 1]
 
@@ -58,7 +58,7 @@ end
 
 ### Symbol Resolution Rules
 
-- Variables inside `@smc` become particle columns unless explicitly local
+- Variables inside `@model` become particle columns unless explicitly local
 - Use `x .= expr` for particle assignment, `x = expr` for local variables
 - Index interpolation: `x{i}` creates dynamic variable names (`x1`, `x2`, etc.)
 - Array indexing: `x[i]` broadcasts over particle arrays
@@ -107,4 +107,4 @@ Add to `default_kernels` in `smc_kernels.jl` using `@generate_kernels` macro wit
 
 ### Debugging Macro Expansion
 
-Use `@macroexpand @smc function ...` to inspect generated code. The macro transforms expressions in `rewrites.jl` using symbol replacement functions.
+Use `@macroexpand @model function ...` to inspect generated code. The macro transforms expressions in `rewrites.jl` using symbol replacement functions.

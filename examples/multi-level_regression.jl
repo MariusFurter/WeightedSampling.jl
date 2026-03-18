@@ -11,7 +11,7 @@ J = 8
 y = [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0]  # estimated treatment effects
 σ = [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0]  # standard errors of effect estimates
 
-@smc function eight_schools(J, y, σ)
+@model function eight_schools(J, y, σ)
     μ ~ Normal(0, 5)
     τ ~ Exponential(5)
 

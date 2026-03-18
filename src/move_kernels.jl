@@ -14,7 +14,7 @@ Symmetric random walk proposal kernel with variance `step_size`.
 
 # Examples  
 ```julia
-@smc function model()
+@model function model()
     α ~ Normal(0, 10)
     β ~ Normal(0, 10)
     
@@ -23,7 +23,7 @@ Symmetric random walk proposal kernel with variance `step_size`.
 end
 ```
 
-See also: [`@smc`](@ref)
+See also: [`@model`](@ref)
 """
 function RW(particles, targets, step_size)
     # Gaussian RW independent Gaussian steps of step_size
@@ -71,7 +71,7 @@ where:
 
 # Examples  
 ```julia
-@smc function model()
+@model function model()
     α ~ Normal(0, 10)
     β ~ Normal(0, 10)
     
@@ -80,7 +80,7 @@ where:
 end
 ```
 
-See also: [`@smc`](@ref)
+See also: [`@model`](@ref)
 """
 function autoRW(particles, targets, min_step=1e-3)
     # Gaussian RW with covariance λΣ

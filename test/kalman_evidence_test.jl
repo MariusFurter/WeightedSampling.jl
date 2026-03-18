@@ -53,7 +53,7 @@ function kalman_evidence_test(; n_particles=10_000, T=50, max_abs_diff=3.0)
     exact = kalman_filter_evidence(observations)
 
     # SMC estimate
-    @smc function ssm_model(data)
+    @model function ssm_model(data)
         x ~ Normal(0.0, 1.0)
         for (t, y) in enumerate(data)
             x ~ Normal(0.8 * x, 0.5)

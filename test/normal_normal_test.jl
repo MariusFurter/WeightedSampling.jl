@@ -13,7 +13,7 @@ function normal_normal_test(; n_particles=100_000, atol_mean=0.1, atol_std=0.1)
     obs_std = 1.0
     data_val = 5.0
 
-    @smc function normal_normal_model(data_val, prior_mean, prior_std, obs_std)
+    @model function normal_normal_model(data_val, prior_mean, prior_std, obs_std)
         prior_mean = prior_mean
         prior_std = prior_std
         obs_std = obs_std

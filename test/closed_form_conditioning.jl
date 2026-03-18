@@ -2,7 +2,7 @@
 function beta_binomial_test(n, k, T, a, b)
     Random.seed!(42)
 
-    @smc function beta_binomial(n, k, T, a, b)
+    @model function beta_binomial(n, k, T, a, b)
         a = a
         b = b
         p ~ Beta(a, b)

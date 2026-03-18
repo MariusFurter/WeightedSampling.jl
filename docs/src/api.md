@@ -10,10 +10,10 @@ CurrentModule = WeightedSampling
 SMCKernel
 ```
 
-## The `@smc` macro
+## The `@model` macro
 
 ```@docs
-@smc
+@model
 ```
 
 ## Utility
@@ -35,7 +35,7 @@ RW
 
 ## Distribution kernels
 
-WeightedSampling.jl provides kernels for all major distributions from Distributions.jl. These can be used directly by name in `@smc` functions:
+WeightedSampling.jl provides kernels for all major distributions from Distributions.jl. These can be used directly by name in `@model` functions:
 
 ### Continuous distributions
 `Normal(μ, σ)`, `Beta(α, β)`, `Gamma(α, θ)`, `Exponential(θ)`, `Uniform(a, b)`, `Cauchy(μ, σ)`, `Laplace(α, θ)`, `LogNormal(μ, σ)`, `Weibull(α, θ)`, `Chi(ν)`, `Chisq(ν)`, `TDist(ν)`, `FDist(ν1, ν2)`, `Pareto(α, θ)`, `Rayleigh(σ)`, `Gumbel(μ, θ)`, `Frechet(α, θ)`, `InverseGamma(α, θ)`, `LogitNormal(μ, σ)`, `Logistic(μ, θ)`, `SkewNormal(ξ, ω, α)`, `SkewedExponentialPower(μ, σ, p, α)`, `VonMises(μ, κ)`, `GeneralizedPareto(μ, σ, ξ)`, `NoncentralChisq(ν, λ)`, `NoncentralF(ν1, ν2, λ)`, `NoncentralT(ν, λ)`, `NormalCanon(η, λ)`
@@ -65,7 +65,7 @@ TruncatedNormal = SMCKernel(
     (μ, σ, a, b, x) -> logpdf(Truncated(Normal(μ, σ), a, b), x)
 )
 
-@smc function model()
+@model function model()
     θ ~ TruncatedNormal(0.0, 1.0, -2.0, 2.0)
 end
 

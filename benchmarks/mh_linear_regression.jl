@@ -20,7 +20,7 @@ function generate_synthetic_data(num_points)
     return collect(zip(xs, ys))
 end
 
-@smc function linear_model(data)
+@model function linear_model(data)
     a ~ Normal(0.0, 5.0)
     b ~ Normal(0.0, 5.0)
     for (x, y) in data

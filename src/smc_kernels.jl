@@ -30,8 +30,8 @@ TruncatedNormal = SMCKernel(
     (μ, σ, a, b, x) -> logpdf(Truncated(Normal(μ, σ), a, b), x)
 )
 
-# Use in @smc model
-@smc function model(data)
+# Use in @model model
+@model function model(data)
     θ ~ TruncatedNormal(0.0, 1.0, -2.0, 2.0)
     for y in data
         y => Normal(θ, 0.5)
@@ -39,7 +39,7 @@ TruncatedNormal = SMCKernel(
 end
 ```
 
-See also: [`@smc`](@ref)
+See also: [`@model`](@ref)
 """
 struct SMCKernel{S,L,W}
     sampler::S

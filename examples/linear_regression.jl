@@ -12,7 +12,7 @@ xs = 1:10
 ys = α .+ β .* xs .+ σ * randn(length(xs))
 
 # Linear regression with importance sampling / resampling.
-@smc function linear_regression(xs, ys)
+@model function linear_regression(xs, ys)
     α ~ Normal(0, 1)
     β ~ Normal(0, 1)
 
@@ -56,7 +56,7 @@ fig = plot_results(xs, ys, particles, α, β)
 display(fig)
 
 # Linear regression with SMC + MCMC moves (requires fewer particles, even for vague priors)
-@smc function linear_regression_move(xs, ys)
+@model function linear_regression_move(xs, ys)
     α ~ Normal(0, 10)
     β ~ Normal(0, 10)
 

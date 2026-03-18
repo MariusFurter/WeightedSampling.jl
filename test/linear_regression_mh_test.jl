@@ -17,7 +17,7 @@ function linear_regression_mh_test(; n_particles=10_000, atol_slope=0.3, atol_in
 
     data = collect(zip(xs, ys))
 
-    @smc function linear_regression(data)
+    @model function linear_regression(data)
         α ~ Normal(0.0, 5.0)
         β ~ Normal(0.0, 5.0)
         for (x, y) in data

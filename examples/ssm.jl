@@ -28,7 +28,7 @@ for t in 1:T
 end
 
 # State space model with SMC
-@smc function ssm(obs)
+@model function ssm(obs)
     I = [1 0; 0 1]
     x1 .= [0.0, 0.0]
     v .= [1.0, 0.0]

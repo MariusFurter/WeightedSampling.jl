@@ -6,7 +6,7 @@
 
 ## Features
 
-- Intuitive `@smc` macro for SMC model specification
+- Intuitive `@model` macro for SMC model specification
 - Automatic weight management and resampling
 - Support for Metropolis-Hastings moves within SMC
 - Flexible kernel and proposal definitions
@@ -30,7 +30,7 @@ Here's a simple linear regression example:
 ```julia
 using WeightedSampling
 
-@smc function linear_regression(xs, ys)
+@model function linear_regression(xs, ys)
     α ~ Normal(0, 1)  # sample prior
     β ~ Normal(0, 1)
     
@@ -50,9 +50,9 @@ particles, evidence = linear_regression(xs, ys, n_particles=1000)
 describe_particles(particles)
 ```
 
-## The `@smc` Macro
+## The `@model` Macro
 
-The core of **WeightedSampling.jl** is the `@smc` macro, which transforms a Julia function into a Sequential Monte Carlo (SMC) model with automatic weight management, resampling, and support for Metropolis-Hastings (MH) moves.
+The core of **WeightedSampling.jl** is the `@model` macro, which transforms a Julia function into a Sequential Monte Carlo (SMC) model with automatic weight management, resampling, and support for Metropolis-Hastings (MH) moves.
 
 ### Key Operators
 
@@ -63,7 +63,7 @@ The core of **WeightedSampling.jl** is the `@smc` macro, which transforms a Juli
 
 ### Generated Functions
 
-SMC models defined with `@smc` are compiled to two main functions:
+SMC models defined with `@model` are compiled to two main functions:
 - `model!(args...; particles, ...)` *(in-place update of existing particles)*
 - `model(args...; n_particles=..., ...)` *(creates and returns new particles)*
 

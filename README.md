@@ -6,7 +6,7 @@
 
 **Features:**
 
-- Intuitive `@smc` macro for SMC model specification
+- Intuitive `@model` macro for SMC model specification
 - Automatic weight management and resampling
 - Support for Metropolis-Hastings moves within SMC
 - Flexible kernel and proposal definitions
@@ -32,7 +32,7 @@ For detailed information, see the [`documentation`](https://MariusFurter.github.
 ```julia
 using WeightedSampling
 
-@smc function linear_regression_move(xs, ys)
+@model function linear_regression_move(xs, ys)
     α ~ Normal(0, 10) # sample
     β ~ Normal(0, 10)
     for (x, y) in zip(xs, ys)
@@ -56,7 +56,7 @@ describe_particles(particles)
 ### Bootstrap Particle Filter
 
 ```julia
-@smc function ssm(obs)
+@model function ssm(obs)
     I = [1 0; 0 1]     # local variable
     x1 .= [0.0, 0.0]   # assign
     v .= [1.0, 0.0]
@@ -74,16 +74,16 @@ end
 </div>
 
 
-## The `@smc` Macro
+## The `@model` Macro
 
-The core of **WeightedSampling.jl** is the `@smc` macro, which transforms a Julia function into a Sequential Monte Carlo (SMC) model with automatic weight management, resampling, and support for Metropolis-Hastings (MH) moves. This enables concise and expressive probabilistic programming.
+The core of **WeightedSampling.jl** is the `@model` macro, which transforms a Julia function into a Sequential Monte Carlo (SMC) model with automatic weight management, resampling, and support for Metropolis-Hastings (MH) moves. This enables concise and expressive probabilistic programming.
 
 - **Particle assignment:** `x .= expr` broadcasts `expr` to all particles.
 - **Sampling:** `x ~ SMCKernel(args)` samples from a distribution or kernel and updates particle weights.
 - **Observation:** `expr => SMCKernel(args)` conditions on observed data, updating weights accordingly.
 - **MH Move:** `x << Proposal(args)` applies Metropolis-Hastings moves to particles.
 
-SMC models defined with `@smc` are compiled to two main functions:
+SMC models defined with `@model` are compiled to two main functions:
 - `model!(args...; particles, ...)` *(in-place update of existing particles)*
 - `model(args...; n_particles=..., ...)` *(creates and returns new particles)*
 
