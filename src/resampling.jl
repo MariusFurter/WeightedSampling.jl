@@ -1,5 +1,14 @@
 """
-Compute inverse CDF induced by the normalized `weights``. `us`` must be a sorted vector of uniform random samples.
+Resampling machinery: inverse-CDF stratified resampling, ESS, and
+log-sum-exp helpers used by `Resample` and evidence computation.
+"""
+
+"""
+    icdf(weights::Vector{Float64}, us::Vector{Float64})
+
+Inverse-CDF lookup: for each (sorted) uniform sample in `us`, find the index
+`m` such that the cumulative sum of `weights` up to `m` first exceeds it.
+`weights` must be normalized (sum to 1) and `us` sorted ascending.
 """
 function icdf(weights::Vector{Float64}, us::Vector{Float64})
     N = length(weights)
@@ -16,48 +25,53 @@ function icdf(weights::Vector{Float64}, us::Vector{Float64})
     return indices
 end
 
+"""
+    stratified_resample(weights::Vector{Float64})
+
+Stratified resampling: draws `N` indices with (normalized) probability
+`weights[i]`, using one stratified uniform sample per output slot (lower
+variance than plain multinomial resampling).
+"""
 function stratified_resample(weights::Vector{Float64})
     N = length(weights)
-
-    # Generate uniform random samples us[n] ~ U([(n-1)/N, n/N))
     us = Vector{Float64}(undef, N)
     inv_N = 1.0 / N
     for n in 1:N
         @inbounds us[n] = (n - 1) * inv_N + rand() * inv_N
     end
-
-    # Compute indices using the inverse CDF
-    indices = icdf(weights, us)
-    return indices
+    return icdf(weights, us)
 end
 
 """
-Compute effective sample size percentage (ESS/N) from weights. 
+    ess_perc(weights::Vector{Float64})
+
+Effective sample size, as a percentage of `N`: `ESS / N = 1 / (N * sum(w^2))`
+for normalized weights `w`.
 """
 function ess_perc(weights::Vector{Float64})
     N = length(weights)
-    return 1.0 / (N * sum(weights .^ 2))
+    return 1.0 / (N * sum(abs2, weights))
 end
 
+"""
+    logsumexp(logw)
 
-function resample_particles!(particles, ess_perc_min=0.5::Float64)
-    exp_norm!(particles[!, :weights])
-    current_ess_perc = ess_perc(particles[!, :weights])
-    if current_ess_perc < ess_perc_min
-        indices = stratified_resample(particles[!, :weights])
+`log(sum(exp.(logw)))`, computed in a numerically stable way.
+"""
+function logsumexp(logw)
+    m = maximum(logw)
+    return m + log(sum(x -> exp(x - m), logw))
+end
 
-        particles[:, :] = particles[indices, :]
+"""
+    exp_norm(weights::Vector{Float64})
 
-        for col in names(particles)
-            if eltype(particles[!, col]) <: AbstractArray
-                particles[!, col] .= copy.(particles[:, col])
-            end
-        end
-
-        particles[!, :weights] .= 0.0
-        return true, current_ess_perc
-    else
-        particles[!, :weights] .= log.(particles[!, :weights])
-        return false, current_ess_perc
-    end
+Exponentiate and normalize (unnormalized) log-`weights` into a probability
+vector, subtracting the max first for numerical stability.
+"""
+function exp_norm(weights::Vector{Float64})
+    m = maximum(weights)
+    w = exp.(weights .- m)
+    w ./= sum(w)
+    return w
 end

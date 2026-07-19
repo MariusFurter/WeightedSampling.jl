@@ -2,10 +2,6 @@
 
 ## Convenience
 
-## Core architecture
-- [ ] **Improve variable scoping**: Replace symbols in constructed function body with gensyms, or use let blocks to prevent naming conflicts
-- [ ] **Variable reuse detection**: Add check that the same variable is not used multiple times in sampling statements when moves are used.
-
 ## Composition and recursion of SMC samplers
 - [ ] **Recursion & composition**: Enable composition with other SMC functions more generally
 - [ ] **Type wrapping**: Wrap SMC function in type and implement case distinction in code
@@ -16,6 +12,9 @@
 
 ## Documentation
 
+## Examples
+- [ ] Stochastic volatility
+- [ ] Parameter inference in SSM
 
 ## Testing & Validation
 - [ ] **Expand test coverage**: Add more comprehensive tests
@@ -23,7 +22,7 @@
 - [ ] **Type stability**: Add type stability checks
 
 ## Algorithm Extensions
-- [ ] **Constraint-aware MH proposals**: `autoRW()` should detect positivity constraints from the sampling distribution (e.g., `Exponential`, `HalfCauchy`, `LogNormal`) and automatically propose on log-scale. Currently, using `σ ~ Exponential(5)` with `σ << autoRW()` crashes with a `DomainError` when the random walk proposes negative values. Workaround: manual log-reparameterization (`log_σ ~ Normal(0,1)`, use `exp(log_σ)`). Options: auto-detect constraints from distribution support, provide `autoRW(transform=:log)`, or implement a general `TransformedRW()` for common constraint types (positive, unit interval, simplex).
+- [ ] **Multithreading support** 
 - [ ] **Additional resampling schemes**: Support more resampling algorithms
 - [ ] **Pseudo-marginal sampling**: Add support for pseudo-marginal sampling when some variables are overwritten
 - [ ] **Adaptive algorithms**: Implement adaptive SMC variants

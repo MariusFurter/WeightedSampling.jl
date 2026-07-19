@@ -1,111 +1,32 @@
-`WeightedSampling.jl` provides the `@model` macro for concise specification of Sequential Monte Carlo (SMC) sampling schemes. It transforms probabilistic programs into efficient particle filters with automatic resampling and weight management. It excels at dynamic and moderate-dimensional statistical models (< 1k parameters).
+# Usage Guide
 
-**Note:** This package is in early development. Use with caution.
+WeightedSampling.jl uses a macro DSL to build Sequential Monte Carlo programs.
+The core flow is:
+
+1. Define a model with `@model`.
+2. Build a transformer by calling the model function.
+3. Run it on an `SMCState`.
 
 ## Installation
 
-The package is not yet registered in the Julia General Registry. Install directly from this repository:
+The package is not registered yet. Install from GitHub:
 
-```terminal
-add https://github.com/MariusFurter/WeightedSampling.jl
+```julia
+using Pkg
+Pkg.add("https://github.com/MariusFurter/WeightedSampling.jl")
 ```
 
-## Quick start
-
-### Linear regression
+## Quick Start
 
 ```julia
 using WeightedSampling
+using Random
+
+Random.seed!(42)
 
 @model function linear_regression(xs, ys)
-    α ~ Normal(0, 1) # sample
-    β ~ Normal(0, 1)
-    for (x, y) in zip(xs, ys)
-        y => Normal(α + β * x, 1.0) # observe
-    end
-end
-
-xs = 1:10
-ys = 1-0 .- 0.5 .* xs .+ 0.5 * randn(length(xs))
-
-particles, evidence = linear_regression(xs, ys, n_particles=1000, ess_perc_min=0.5)
-describe_particles(particles)
-```
-
-### Bootstrap particle filter
-
-```julia
-@model function ssm(obs)
-    I = [1 0; 0 1]     # local variable
-    x1 .= [0.0, 0.0]   # assign
-    v .= [1.0, 0.0]
-    for (i, o) in enumerate(obs)
-        x{i + 1} .= x{i} + v             # dynamic variable creation
-        dv ~ MvNormal([0, 0], 0.1 * I)   # sample
-        v .= v + dv
-        o => MvNormal(x{i + 1}, 0.5 * I) # observe
-    end
-end
-```
-
-The `@model` macro generates functions that propagate a DataFrame `particles` of weighted samples through SMC kernels. Particle variables are stored as columns (e.g., `particles.x`), with log-weights in `particles.weights`. Resampling occurs when the effective sample size drops below `ess_perc_min`. The macro generates two SMC functions:
-
-```julia
-# In-place (modifies existing particles)
-function model!(args...; particles, kernels=nothing, proposals=nothing, 
-                ess_perc_min=0.5, compute_evidence=true, show_progress=true)
-
-# Sampling (creates new particles)
-function model(args...; n_particles=1000, kernels=nothing, proposals=nothing,
-               ess_perc_min=0.5, compute_evidence=true, show_progress=true)
-```
-Pass external data as function arguments. Both functions return the evidence (log-probability of observations) by default.
-
-Within `@model`, the following operators are available:
-
-- **Particle assignment:** `x .= expr` broadcasts `expr` to `particles.x`.
-- **Sampling:** `x ~ SMCKernel(args)` samples to `particles.x` and updates weights.
-- **Observation:** `expr => SMCKernel(args)` updates weights based on observing `expr`.
-- **MH Move:** `x << Proposal(args)` performs Metropolis-Hastings moves on `particles.x`.
-Both `expr` and `args` can reference `particles.x` as `x`.
-
-Regular Julia constructs are supported:
-
-- **Assignment (`=`):** Creates local variables (not stored in `particles`).
-- **For loops:** Supports `for i in collection` and tuple destructuring, where `collection` does not involve particle variables.
-- **Conditionals:** `if condition` where `condition` does not involve particle variables.
-
-Additional features:
-
-- **Array indexing:** `x[i]` maps over `particles.x`.
-- **Index interpolation:** `x{i}` creates dynamic variable names (e.g., `x1`, `x2`, ...).
-
-## SMCKernel type
-
-`SMCKernel` represents a (random weight) importance sampler:
-
-- `sampler`: `(args...) -> sample` — generates samples
-- `weighter`: `(args..., sample) -> log_weight` — computes log weights (can be `nothing` for uniform)
-- `logpdf`: `(args..., sample) -> log_pdf` — evaluates log-density
-
-Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
-
-```math
-\int_{w} \text{weighter}(w \mid \text{args}, x) \text{sampler}(x \mid \text{args}) dw
-```
-
-The `logpdf` is the log-density of this kernel.
-
-Default kernels are provided for major distributions from Distributions.jl (see `smc_kernels.jl`), accessible by name in `@model`. Custom kernels can be defined using `SMCKernel` and passed as named tuples to SMC functions.
-
-## MH moves
-
-Resampling reduces particle diversity for early-sampled variables. MH moves can restore diversity. Example:
-
-```julia
-@model function linear_regression(xs, ys)
-    α ~ Normal(0, 10)
-    β ~ Normal(0, 10)
+    α ~ Normal(0.0, 10.0)
+    β ~ Normal(0.0, 10.0)
     for (x, y) in zip(xs, ys)
         y => Normal(α + β * x, 1.0)
         if resampled
@@ -114,73 +35,91 @@ Resampling reduces particle diversity for early-sampled variables. MH moves can 
         end
     end
 end
+
+xs = 1:10
+ys = 1.0 .- 0.5 .* xs .+ 0.5 .* randn(length(xs))
+
+model = linear_regression(xs, ys)
+state = SMCState(1_000)
+run!(model, state)
+
+describe(state)
+posterior = sample(state, 200)
+alpha_mean = @E(α -> α, state)
 ```
 
-**Note:** Moves require that particle variables are not overwritten before the move, as the MH acceptance ratio depends on previous values.
+## Model DSL
 
-Moves are computationally expensive. Use them conditionally, based on the state of the particle approximation. The following variables are available within `@model`:
+Inside `@model`, these operators are available:
 
-- `particles`: The `particles` DataFrame
-- `resampled`: Boolean, true if resampling occurred in the previous step
-- `ess_perc`: Current effective sample size (percent)
-- `evidence`: Current accumulated log-probability
+- `x .= expr`: broadcast assignment to particle variable `x`
+- `x ~ KernelOrDistribution(args...)`: sample/update step
+- `obs => KernelOrDistribution(args...)`: observation/conditioning step
+- `x << Proposal(args...)`: MH move step
 
-MH kernels are functions `Proposal(particles, targets, args...)` returning a DataFrame of proposals and a vector of log proposal ratios.
+### Dynamic Variables
 
-Available proposals:
-
-- `RW(step_size)`: Symmetric random walk
-- `autoRW(min_step)`: Random walk with empirically calibrated covariance
-
-Joint updates are supported:
+Use brace interpolation for dynamic names:
 
 ```julia
-(α, β) << autoRW()
+@model function ssm(obs)
+    I2 = [1.0 0.0; 0.0 1.0]
+    x{1} .= [0.0, 0.0]
+    v .= [1.0, 0.0]
+    for (i, o) in enumerate(obs)
+        x{i + 1} .= x{i} + v
+        dv ~ MvNormal([0.0, 0.0], 0.1 * I2)
+        v .= v + dv
+        o => MvNormal(x{i + 1}, 0.5 * I2)
+    end
+end
 ```
 
-## Utility functions
+## Running A Model
 
-- `sample_particles(particles, n; replace=false)`: Draw `n` samples by weight
-- `describe_particles(particles)`: Summarize all variables
-- `exp_norm(weights)`: Normalize log-weights to probabilities
-- `@E(f, particles)`: Compute weighted expectation of function `f` over particle variables
+`@model` generates a function that returns a `ParticleTransformer` (usually a
+`Sequence`).
+
+```julia
+model = my_model(args...)
+state = SMCState(1000)
+run!(model, state)
+```
+
+`run!` works for models with and without move steps.
+
+## State And Analysis
+
+An `SMCState` stores particle columns and log-weights.
+
+Common utilities:
+
+- `describe(state)` for weighted summary statistics
+- `sample(state, n)` for weighted posterior samples
+- `@E(f, state)` for weighted expectations
+- `DataFrame(state)` for raw particle export plus `:log_weight`
 
 Examples:
 
 ```julia
-@E(x -> x, particles)         # E[x]
-@E(x -> x == 1, particles)    # P[x == 1]
-@E((x, y) -> x + y, particles) # E[x + y]
+@E(x -> x, state)
+@E((x, y) -> x + y, state)
 ```
 
-## Performance tips
+## Custom Kernels And Proposals
 
-- Main bottleneck is resampling; many distinct variables (>10k) slow performance.
-- Overwriting particle variables marginalizes them.
-- Use static, concrete types (e.g., `StaticArrays.SVector`) for efficiency.
-- Moves are expensive; use only when necessary.
-
-## Saving particle history
-Monitor SMC progress by saving snapshots:
+You can override defaults per model call:
 
 ```julia
-ess_list = []
-history = []
+custom_normal = WeightedKernel(
+    (μ, σ) -> rand(Normal(μ, σ)),
+    nothing,
+    (μ, σ, x) -> logpdf(Normal(μ, σ), x),
+)
 
-@model function ssm(observations, ess_list, history)
-    I = [1 0; 0 1]
-    x .= [0.0, 0.0]
-    v .= [1.0, 0.0]
-
-    for obs in observations
-        # Save snapshot
-        push!(ess_list, ess_perc)
-        push!(history, particles.x)
-
-        x .= x + v
-        dv ~ MvNormal([0,0], 0.1*I)
-        v .= v + dv
-        obs => MvNormal(x, 0.5*I)
-    end
-end
+model = linear_regression(xs, ys; kernels=(Normal=custom_normal,))
+state = SMCState(1_000)
+run!(model, state)
 ```
+
+Proposals are provided through the `proposals` keyword similarly.

@@ -1,32 +1,26 @@
-using WeightedSampling
 using Test
-using Random
-using Distributions
+using WeightedSampling
+using WeightedSampling: apply!, score!, score_logpdf, score_logpdf!,
+    AbstractParticleStore, ColumnStore,
+    nparticles, hascol, getcol, colnames, broadcast_setcol!, resample!,
+    ParticleTransformer, ScoreCtx,
+    Assign, AccessorAssign, AccessorSample, Sample, Observe, Weight,
+    Sequence, Loop, Cond, Resample, Move,
+    icdf, stratified_resample, ess_perc, logsumexp,
+    dynname
 
-include("closed_form_conditioning.jl")
-include("normal_normal_test.jl")
-include("random_walk_test.jl")
-include("kalman_evidence_test.jl")
-include("linear_regression_mh_test.jl")
+include("models.jl")
 
 @testset "WeightedSampling.jl" begin
-    @testset "Beta-Binomial conjugate" begin
-        @test beta_binomial_test(10, 8, 10, 1.0, 2.0)
-    end
-
-    @testset "Normal-Normal conjugate" begin
-        @test normal_normal_test()
-    end
-
-    @testset "Sequential random walk" begin
-        @test random_walk_test()
-    end
-
-    @testset "Kalman filter log-evidence" begin
-        @test kalman_evidence_test()
-    end
-
-    @testset "Linear regression with MH moves" begin
-        @test linear_regression_mh_test()
-    end
+    include("transformers_test.jl")
+    include("score_test.jl")
+    include("move_test.jl")
+    include("macro_test.jl")
+    include("move_macro_test.jl")
+    include("accessors_test.jl")
+    include("dynamic_vars_test.jl")
+    include("dynamic_move_test.jl")
+    include("default_kernels_test.jl")
+    include("api_test.jl")
+    include("show_test.jl")
 end

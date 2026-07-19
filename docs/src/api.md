@@ -7,7 +7,14 @@ CurrentModule = WeightedSampling
 ## Core Types
 
 ```@docs
-SMCKernel
+SMCState
+WeightedKernel
+```
+
+## Execution
+
+```@docs
+run!
 ```
 
 ## The `@model` macro
@@ -20,22 +27,31 @@ SMCKernel
 
 ```@docs
 @E
+expectation
 exp_norm
-describe_particles
-sample_particles
-diversity
+describe
+sample
 ```
 
 ## MH proposal kernels
 
 ```@docs
+default_proposals
 autoRW
 RW
 ```
 
+## Default Distribution Kernels
+
+```@docs
+default_kernels
+```
+
 ## Distribution kernels
 
-WeightedSampling.jl provides kernels for all major distributions from Distributions.jl. These can be used directly by name in `@model` functions:
+WeightedSampling.jl provides kernels for many Distributions.jl distributions.
+These are available through `default_kernels` and are resolved by name in
+`@model` bodies.
 
 ### Continuous distributions
 `Normal(μ, σ)`, `Beta(α, β)`, `Gamma(α, θ)`, `Exponential(θ)`, `Uniform(a, b)`, `Cauchy(μ, σ)`, `Laplace(α, θ)`, `LogNormal(μ, σ)`, `Weibull(α, θ)`, `Chi(ν)`, `Chisq(ν)`, `TDist(ν)`, `FDist(ν1, ν2)`, `Pareto(α, θ)`, `Rayleigh(σ)`, `Gumbel(μ, θ)`, `Frechet(α, θ)`, `InverseGamma(α, θ)`, `LogitNormal(μ, σ)`, `Logistic(μ, θ)`, `SkewNormal(ξ, ω, α)`, `SkewedExponentialPower(μ, σ, p, α)`, `VonMises(μ, κ)`, `GeneralizedPareto(μ, σ, ξ)`, `NoncentralChisq(ν, λ)`, `NoncentralF(ν1, ν2, λ)`, `NoncentralT(ν, λ)`, `NormalCanon(η, λ)`
@@ -53,13 +69,13 @@ WeightedSampling.jl provides kernels for all major distributions from Distributi
 
 ### Custom kernels
 
-You can define custom SMC kernels for distributions not included in the package:
+You can define custom kernels for distributions not included in the package:
 
 ```julia
 using Distributions
 
 # Custom truncated normal kernel
-TruncatedNormal = SMCKernel(
+TruncatedNormal = WeightedKernel(
     (μ, σ, a, b) -> rand(Truncated(Normal(μ, σ), a, b)),
     nothing,  # uniform weights
     (μ, σ, a, b, x) -> logpdf(Truncated(Normal(μ, σ), a, b), x)
@@ -69,20 +85,22 @@ TruncatedNormal = SMCKernel(
     θ ~ TruncatedNormal(0.0, 1.0, -2.0, 2.0)
 end
 
-# Pass custom kernel to the model
-particles, evidence = model(
-    kernels=(TruncatedNormal=TruncatedNormal,)
-)
+# Build and run
+transformer = model(kernels=(TruncatedNormal=TruncatedNormal,))
+state = SMCState(500)
+run!(transformer, state)
 ```
 
 ### Custom proposals
 
-You can defined custom MH proposals using the following signature:
+You can define custom MH proposals using the following signature:
 
 ```julia
-function Proposal(particles, targets, params...)
-    # Return (proposed_changes::DataFrame, log_ratios::Vector)
+function Proposal(state, targets, params...)
+    # Return (proposed_changes, log_ratios)
 end
 ```
 
-Here `log_ratios` is a vector with entries ``\log q(x_\text{old} \mid x_\text{new}) - \log q(x_\text{new} \mid x_\text{old})``, where ``q`` is the density of the proposal kernel.
+Here `proposed_changes` is typically a `Dict{Symbol,<:AbstractVector}` and
+`log_ratios` is a vector with entries
+``\log q(x_\text{old} \mid x_\text{new}) - \log q(x_\text{new} \mid x_\text{old})``.

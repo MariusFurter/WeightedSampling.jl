@@ -1,58 +1,20 @@
 """
-    SMCKernel{S,L,W}
-
-Represents a (random weight) importance sampler.
-
-# Fields
-- `sampler::S`: Function `(args...) -> sample` that generates samples
-- `weighter::W`: Function `(args..., sample) -> log_weight` that computes log weights. Can be random. Use `nothing` for uniform weights.
-- `logpdf::L`: Function `(args..., sample) -> log_density` that evaluates log-density
-
-Every `SMCKernel` represents a stochastic kernel given by averaging samples over weights:
-```math
-\\int_{w} \\text{weighter}(w \\mid \\text{args}, x) \\text{sampler}(x \\mid \\text{args}) dw
-```
-The `logpdf` function is the density of this kernel.
-
-# Constructor
-```julia
-SMCKernel(sampler, weighter, logpdf)
-```
-
-# Examples
-```julia
-using Distributions
-
-# Custom truncated normal kernel
-TruncatedNormal = SMCKernel(
-    (μ, σ, a, b) -> rand(Truncated(Normal(μ, σ), a, b)),
-    nothing,  # uniform weights
-    (μ, σ, a, b, x) -> logpdf(Truncated(Normal(μ, σ), a, b), x)
-)
-
-# Use in @model model
-@model function model(data)
-    θ ~ TruncatedNormal(0.0, 1.0, -2.0, 2.0)
-    for y in data
-        y => Normal(θ, 0.5)
-    end
-end
-```
-
-See also: [`@model`](@ref)
+Default `WeightedKernel`s wrapping `Distributions.jl` distributions: sampling
+via `rand`, uniform weighting, density via `logpdf`.
 """
-struct SMCKernel{S,L,W}
-    sampler::S
-    weighter::W
-    logpdf::L
-end
 
+"""
+    @from_distribution(dist_type, args...)
+
+Build a `WeightedKernel` wrapping `Distributions.dist_type(args...)`: samples
+via `rand`, uniform weighting (`weighter=nothing`), density via `logpdf`.
+"""
 macro from_distribution(dist_type, args...)
     fields = [args...]
     unique_fields = [gensym(string(field)) for field in fields]
 
     quote
-        SMCKernel(
+        WeightedKernel(
             ($(unique_fields...),) -> rand($(dist_type)($(unique_fields...))),
             nothing,
             ($(unique_fields...), x) -> logpdf($(dist_type)($(unique_fields...)), x),
@@ -60,6 +22,13 @@ macro from_distribution(dist_type, args...)
     end
 end
 
+"""
+    @generate_kernels(dist(args...), ...)
+
+Build a `NamedTuple` mapping each distribution type name to a
+`@from_distribution`-built `WeightedKernel`. Distributions must be given with
+explicit argument names, e.g. `Beta(α, β)`.
+"""
 macro generate_kernels(distributions...)
     tuple_entries = []
 
@@ -78,7 +47,14 @@ macro generate_kernels(distributions...)
     end
 end
 
-# Default kernels from Distributions.jl
+"""
+    default_kernels
+
+`NamedTuple` of built-in `WeightedKernel`s covering most `Distributions.jl`
+distributions, keyed by distribution type name (e.g. `default_kernels.Normal`).
+`@model`-generated functions merge a user-supplied `kernels` `NamedTuple` into
+this fallback table (user entries override same-named defaults).
+"""
 default_kernels = @generate_kernels(
     Beta(α, β), BernoulliLogit(logitp), Bernoulli(p), BetaBinomial(n, α, β), Binomial(n, p),
     Categorical(p), Cauchy(μ, σ), Chi(ν), Chisq(ν),

@@ -2,7 +2,7 @@
 
 [![Build Status](https://github.com/MariusFurter/WeightedSampling.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/MariusFurter/WeightedSampling.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-**WeightedSampling.jl** provides a macro-based interface for Sequential Monte Carlo (SMC) in Julia. It enables concise, readable probabilistic programs that are transformed into efficient particle filters with resampling and weight management.
+**WeightedSampling.jl** provides a macro-based interface for Sequential Monte Carlo (SMC) in Julia. The `@model` macro compiles a probabilistic program into a particle-transformer program that you run on an `SMCState`.
 
 ## Features
 
@@ -25,29 +25,38 @@ Pkg.add("https://github.com/MariusFurter/WeightedSampling.jl")
 
 ## Quick Start
 
-Here's a simple linear regression example:
+Here is a minimal runnable linear regression example:
 
 ```julia
 using WeightedSampling
+using Random
+
+Random.seed!(42)
 
 @model function linear_regression(xs, ys)
-    α ~ Normal(0, 1)  # sample prior
-    β ~ Normal(0, 1)
-    
+    α ~ Normal(0.0, 10.0)
+    β ~ Normal(0.0, 10.0)
     for (x, y) in zip(xs, ys)
-        y => Normal(α + β * x, 1.0)  # observe data
+        y => Normal(α + β * x, 1.0)
+        if resampled
+            α << autoRW()
+            β << autoRW()
+        end
     end
 end
 
-# Generate some data
+# Generate synthetic data
 xs = 1:10
-ys = 2.0 .+ 0.5 .* xs .+ randn(length(xs))
+ys = 1.0 .- 0.5 .* xs .+ 0.5 .* randn(length(xs))
 
-# Run SMC inference
-particles, evidence = linear_regression(xs, ys, n_particles=1000)
+# Build model and run SMC
+model = linear_regression(xs, ys)
+state = SMCState(1_000)
+run!(model, state)
 
 # Analyze results
-describe_particles(particles)
+describe(state)
+posterior_mean_alpha = @E(α -> α, state)
 ```
 
 ## The `@model` Macro
@@ -56,16 +65,21 @@ The core of **WeightedSampling.jl** is the `@model` macro, which transforms a Ju
 
 ### Key Operators
 
-- **Particle assignment:** `x .= expr` broadcasts `expr` to all particles
-- **Sampling:** `x ~ SMCKernel(args)` samples from a distribution or kernel and updates particle weights
-- **Observation:** `expr => SMCKernel(args)` conditions on observed data, updating weights accordingly
-- **MH Move:** `x << Proposal(args)` applies MH moves to particles
+- **Particle assignment:** `x .= expr` broadcasts `expr` to all particles.
+- **Sampling:** `x ~ Distribution(args)` (or custom kernel name) samples and may update weights.
+- **Observation:** `expr => Distribution(args)` conditions on data by updating weights.
+- **MH move:** `x << Proposal(args)` applies a Metropolis-Hastings move.
 
 ### Generated Functions
 
-SMC models defined with `@model` are compiled to two main functions:
-- `model!(args...; particles, ...)` *(in-place update of existing particles)*
-- `model(args...; n_particles=..., ...)` *(creates and returns new particles)*
+`@model` compiles to a constructor function that returns a `ParticleTransformer`
+(typically a `Sequence`). The usual workflow is:
+
+1. Build the transformer: `model = my_model(args...)`
+2. Create state: `state = SMCState(n_particles)`
+3. Run it: `run!(model, state)`
+
+`run!` is the recommended entry point for all models.
 
 ## Navigation
 

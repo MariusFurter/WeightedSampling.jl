@@ -2,18 +2,36 @@ module WeightedSampling
 
 using DataFrames
 using Distributions
+using LinearAlgebra: I
 using MacroTools
 using ProgressMeter
-using StaticArrays
+using Random
 using StatsBase
 
-export SMCKernel, @model, @E, exp_norm, diversity, sample_particles, describe_particles, RW, autoRW
+export
+    # Core types
+    SMCState, WeightedKernel,
+    run!,
 
-include("rewrites.jl")
+    # MH proposal kernels
+    exp_norm, RW, autoRW, default_proposals,
+
+    # Default sampling/observation kernels
+    default_kernels,
+
+    # Particle analysis utilities
+    expectation, @E, sample, describe,
+
+    # Macro-based model construction
+    @model
+
+include("stores.jl")
+include("types.jl")
 include("resampling.jl")
-include("moves.jl")
-include("smc_kernels.jl")
+include("transformers.jl")
 include("move_kernels.jl")
+include("default_kernels.jl")
 include("utils.jl")
+include("rewrites.jl")
 
 end

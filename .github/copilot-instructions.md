@@ -6,9 +6,9 @@ WeightedSampling.jl is a macro-based Sequential Monte Carlo (SMC) library for Ju
 
 ### The `@model` Macro System
 
-- **Primary abstraction**: `@model function model_name(args...)` transforms Julia functions into SMC samplers
-- **Generates two functions**: `model(args...; n_particles=1000, ...)` (creates particles) and `model!(args...; particles, ...)` (in-place updates)
-- **Particle storage**: DataFrames where columns are variables and `particles.weights` stores log-weights
+- **Primary abstraction**: `@model function model_name(args...)` compiles model code into a `ParticleTransformer` (typically a `Sequence`)
+- **Execution pattern**: `model = model_name(args...)`; `state = SMCState(n_particles)`; `run!(model, state)`
+- **Particle storage**: `state.store` (default backend `ColumnStore`) holds particle columns, and `state.weights` stores log-weights
 - **Key operators**:
   - `x ~ Distribution(args)` - sampling with weight updates
   - `x => Distribution(args)` - observation/conditioning
@@ -18,12 +18,14 @@ WeightedSampling.jl is a macro-based Sequential Monte Carlo (SMC) library for Ju
 ### Module Structure (`src/`)
 
 - `WeightedSampling.jl` - main module exports
-- `rewrites.jl` - macro expansion logic (symbol replacement, expression parsing)
-- `smc_kernels.jl` - `SMCKernel` struct and default distribution kernels
+- `stores.jl` - particle storage backends (`AbstractParticleStore`, `ColumnStore`)
+- `types.jl` - core runtime types (`SMCState`, `WeightedKernel`) and execution helpers
+- `transformers.jl` - transformer implementations (`Assign`, `Sample`, `Observe`, `Move`, `Loop`, etc.)
+- `rewrites.jl` - `@model` macro expansion and DSL rewriting
 - `resampling.jl` - ESS-based resampling algorithms
-- `moves.jl` - MCMC move implementations
 - `move_kernels.jl` - proposal distributions for MH moves
-- `utils.jl` - particle utilities (`describe_particles`, `@E` macro, `sample_particles`)
+- `default_kernels.jl` - default distribution kernels
+- `utils.jl` - particle utilities (`describe`, `@E` macro, `sample`)
 
 ## Development Patterns
 
@@ -60,19 +62,19 @@ end
 
 - Variables inside `@model` become particle columns unless explicitly local
 - Use `x .= expr` for particle assignment, `x = expr` for local variables
-- Index interpolation: `x{i}` creates dynamic variable names (`x1`, `x2`, etc.)
+- Index interpolation: `x{i}` creates dynamic variable names (`x_1`, `x_2`, etc.)
 - Array indexing: `x[i]` broadcasts over particle arrays
 
 ### Testing Conventions
 
-- Use exact closed-form solutions when available (see `test/closed_form_conditioning.jl`)
+- Use exact closed-form solutions when available (see tests under `test/`, especially `transformers_test.jl` and `macro_test.jl`)
 - Validate both parameter estimates and evidence values
 - Set `Random.seed!(42)` for reproducibility
 - Use high particle counts (`100_000`) for accurate convergence tests
 
 ### Custom Kernels
 
-Create `SMCKernel(sampler, weighter, logpdf)` where:
+Create `WeightedKernel(sampler, weighter, logpdf)` where:
 
 - `sampler: (args...) -> sample`
 - `weighter: (args..., sample) -> log_weight` (optional, defaults to uniform)
@@ -83,7 +85,7 @@ Pass custom kernels via `kernels=(custom_kernel=my_kernel,)` parameter.
 ## Key Dependencies
 
 - `MacroTools.jl` for macro manipulation (`@capture`, `striplines`)
-- `DataFrames.jl` for particle storage
+- `DataFrames.jl` for result export/analysis utilities
 - `Distributions.jl` for built-in distribution support
 - `StatsBase.jl` for sampling utilities
 
@@ -93,17 +95,19 @@ Pass custom kernels via `kernels=(custom_kernel=my_kernel,)` parameter.
 
 ```julia
 # Basic usage
-particles, evidence = model(data, n_particles=1000, ess_perc_min=0.5)
+model = model_name(data)
+state = SMCState(1000)
+run!(model, state)
 
 # Analysis
-describe_particles(particles)  # Summary statistics
-posterior_mean = @E(x -> x^2, particles)  # Weighted expectations
-samples = sample_particles(particles, 1000)  # Resampling
+describe(state)  # Summary statistics
+posterior_mean = @E(x -> x^2, state)  # Weighted expectations
+samples = sample(state, 1000)  # Weighted sample
 ```
 
 ### Adding New Distributions
 
-Add to `default_kernels` in `smc_kernels.jl` using `@generate_kernels` macro with explicit parameter names.
+Add to `default_kernels` in `default_kernels.jl` using `@generate_kernels` macro with explicit parameter names.
 
 ### Debugging Macro Expansion
 

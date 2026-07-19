@@ -1,2 +1,5 @@
 /Manifest*.toml
 /.vscode
+.DS_Store
+
+/design-docs
