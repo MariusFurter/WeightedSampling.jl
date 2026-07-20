@@ -29,6 +29,7 @@ run!
 @E
 expectation
 exp_norm
+log_evidence
 describe
 sample
 ```
@@ -44,6 +45,7 @@ RW
 ## Default Distribution Kernels
 
 ```@docs
+importance_kernel
 default_kernels
 ```
 
