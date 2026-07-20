@@ -3,3 +3,15 @@
 .DS_Store
 
 /design-docs
+
+# LibBi benchmark docs and generated artifacts
+/benchmarks/ssm/libbi/docs/
+/benchmarks/ssm/libbi/lgssm1d/.LGSSM1D/
+/benchmarks/ssm/libbi/lgssm1d/data/
+/benchmarks/ssm/libbi/lgssm1d/results/
+
+# Multilevel benchmark: generated datasets, Python venv/caches, Julia lockfile
+/benchmarks/multilevel/data/
+/benchmarks/multilevel/numpyro/venv/
+/benchmarks/multilevel/numpyro/__pycache__/
+/benchmarks/multilevel/WeightedSampling/Manifest.toml

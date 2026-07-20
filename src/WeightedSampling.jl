@@ -20,7 +20,7 @@ export
     default_kernels,
 
     # Particle analysis utilities
-    expectation, @E, sample, describe,
+    expectation, @E, sample, describe, log_evidence,
 
     # Macro-based model construction
     @model

@@ -77,5 +77,6 @@ vlines!(ax, [μ_mean]; color=(:crimson, 0.3), linestyle=:dash)
 axislegend(ax; position=:rb)
 
 fig
+save(joinpath(@__DIR__, "plots", "eight_schools.png"), fig; px_per_unit=2.0)
 
 

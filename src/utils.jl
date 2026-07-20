@@ -11,6 +11,16 @@ Weighted expectation of `values` with respect to (unnormalized) log-`weights`.
 expectation(values, weights) = sum(values .* exp_norm(weights))
 
 """
+    log_evidence(state)
+
+Log-evidence (log marginal likelihood) estimate accumulated in `state`:
+`logsumexp(state.weights) - log(N)`, where `N` is the number of particles.
+This quantity is preserved across `Resample` steps, so it can be called at
+any point during or after a run.
+"""
+log_evidence(state) = logsumexp(state.weights) - log(length(state.weights))
+
+"""
     @E(f, state)
 
 Compute the weighted expectation of an anonymous function `f` with respect to
