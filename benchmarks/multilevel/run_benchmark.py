@@ -42,7 +42,7 @@ NUM_WARMUP = 500
 NUM_SAMPLES = 1000
 SEED = 42
 
-N_START = 1_000
+N_START = 1000
 N_MAX = 256_000
 TOLERANCE = 1.25  # WS RMSE must be <= numpyro RMSE * TOLERANCE to "match" quality
 
@@ -118,27 +118,17 @@ def main():
 
     header = (
         f"{'J':>5} {'n_obs':>6} {'total_obs':>10} | "
-        f"{'numpyro_t(s)':>13} {'numpyro_rmse':>13} {'numpyro_essmin':>15} {'numpyro_t/ess':>14} | "
-        f"{'WS_N':>8} {'WS_t(s)':>9} {'WS_rmse':>9} {'WS_ess':>10} {'WS_t/ess':>10}"
+        f"{'numpyro_t(s)':>13} {'numpyro_rmse':>13} | "
+        f"{'WS_N':>8} {'WS_t(s)':>9} {'WS_rmse':>9}"
     )
     print(header)
     print("-" * len(header))
     for J, n_obs, numpyro_result, N, ws_result in rows:
         print(
             f"{J:>5} {n_obs:>6} {J * n_obs:>10} | "
-            f"{numpyro_result['elapsed_time']:>13.3f} {numpyro_result['rmse_alpha']:>13.4f} "
-            f"{numpyro_result['ess_min']:>15.1f} {numpyro_result['time_per_ess_min']:>14.6f} | "
-            f"{N:>8} {ws_result['elapsed_time']:>9.4f} {ws_result['rmse_alpha']:>9.4f} "
-            f"{ws_result['ess']:>10.1f} {ws_result['time_per_ess']:>10.6f}"
+            f"{numpyro_result['elapsed_time']:>13.3f} {numpyro_result['rmse_alpha']:>13.4f} | "
+            f"{N:>8} {ws_result['elapsed_time']:>9.4f} {ws_result['rmse_alpha']:>9.4f}"
         )
-    print(
-        "\nNote: effective sample size (ESS) is NOT directly comparable between the two\n"
-        "methods in an absolute sense -- numpyro's `ess_min` is arviz's bulk-ESS estimator\n"
-        "(can exceed num_samples under favorable/antithetic mixing) over MCMC draws, while\n"
-        "WS's `ess` is the SMC particle effective sample size (1/sum(w_i^2), capped at N).\n"
-        "Both are reported as a rough 'CPU time per effective sample' proxy, not an exact\n"
-        "apples-to-apples statistic."
-    )
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ export
     exp_norm, RW, autoRW, default_proposals,
 
     # Default sampling/observation kernels
-    default_kernels,
+    default_kernels, importance_kernel,
 
     # Particle analysis utilities
     expectation, @E, sample, describe, log_evidence,

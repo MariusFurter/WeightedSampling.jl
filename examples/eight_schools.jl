@@ -11,10 +11,8 @@ Random.seed!(42)
     for j in 1:J
         θ[j] ~ Normal(μ, τ)
         y[j] => Normal(θ[j], σ[j])
-        if resampled
-            μ << autoRW()
-            τ << autoRW(1e-3, (0.0, Inf))
-        end
+        μ << autoRW(; diversity=0.9)
+        τ << autoRW(1e-3, (0.0, Inf); diversity=0.9)
     end
 end
 

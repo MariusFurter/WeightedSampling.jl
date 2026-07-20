@@ -13,7 +13,11 @@ transformers for the model.
 - `x << q(args...)` / `(x, y) << q(args...)` — Metropolis–Hastings move with
   proposal `q` (`Move`). Targets must already be particle variables or
   registered dynamic families `x{e}`; a value-level accessor target
-  (`x[e]`/`x.p`) is an error, since a move rewrites a whole column.
+  (`x[e]`/`x.p`) is an error, since a move rewrites a whole column. An
+  optional reserved `diversity=threshold` keyword on the proposal call (e.g.
+  `x << autoRW(; diversity=0.9)` or `x << RW(0.1; diversity=0.9)`) self-gates
+  the move on particle diversity — see "Diversity-gated moves" below. Without
+  it, the move always runs (previous behavior).
 - `x = expr` (and compound `x += e`, …) — build-time locals; a
   particle-variable target is an error (use `.=` instead).
 - `for x in coll ... end` — a `Loop` (not unrolled).
@@ -36,6 +40,22 @@ and as a dynamic family.
 A `Resample()` step is auto-inserted after every weighting statement (`~`,
 `=>`); each is ESS-gated, so it only reshuffles when particles degenerate. No
 `Resample` is auto-inserted around a `Move` (`<<`).
+
+# Diversity-gated moves
+A `diversity=threshold` keyword on a move's proposal call (see `<<` above)
+makes the move self-gating: `Move.apply!` skips the whole step whenever
+every target column already has a fraction of unique values `>= threshold`
+(see [`marginal_diversity`](@ref); for a joint move over several targets, the
+MINIMUM per-target diversity is used, not the diversity of the joint tuples,
+since the latter can look high even when every individual target has
+collapsed). This makes the classic `if resampled; x << q(); end` wrapper
+unnecessary — `x << q(...; diversity=0.9)` can be written directly at the top
+level of the loop body and will only actually run the (comparatively
+expensive) proposal+accept/reject step when particle collapse has actually
+reduced diversity below the threshold, rather than on every resample event
+regardless of severity. `if resampled` still works as before (and is still
+required if you want unconditional/ungated moves gated only by whether a
+resample just happened).
 
 # Kernel and proposal resolution
 The generated function takes `kernels::NamedTuple` and `proposals::NamedTuple`
@@ -355,6 +375,46 @@ function proposal_expr(q, proposals_var::Symbol)
     end
 end
 
+"""
+    split_move_call_args(args) -> (pos_args::Vector, diversity_expr)
+
+Split a captured `<< q(args__)` argument list into the plain positional
+proposal arguments and a reserved `diversity=...` keyword argument, if
+present. Handles BOTH Julia keyword-argument syntaxes, which parse
+differently: `autoRW(1e-3; diversity=0.9)` (semicolon) captures the keyword(s)
+as a single leading `Expr(:parameters, ...)` element of `args`, while
+`autoRW(1e-3, diversity=0.9)` (comma) captures each keyword as its own
+`Expr(:kw, ...)` element interleaved among the positional args (not
+necessarily at the front) — confirmed via `dump` probing, not assumed. Both
+forms are pulled out here so `diversity=` can be written either way.
+Returns `diversity_expr = nothing` (a literal, not `:(nothing)`) when no
+`diversity=` keyword is given, so the generated `Move` gets `nothing` as its
+`diversity_threshold` (always-move, backward-compatible default).
+"""
+function split_move_call_args(args)
+    pos_args = []
+    kw_exprs = []
+    for a in args
+        if a isa Expr && a.head == :parameters
+            append!(kw_exprs, a.args)
+        elseif a isa Expr && a.head == :kw
+            push!(kw_exprs, a)
+        else
+            push!(pos_args, a)
+        end
+    end
+
+    diversity_expr = nothing
+    for p in kw_exprs
+        @capture(p, name_ = value_) || error("Unsupported keyword argument in move call: $p")
+        name === :diversity ||
+            error("Unsupported keyword argument `$name` in move call (only `diversity=...` is supported)")
+        diversity_expr = value
+    end
+
+    return pos_args, diversity_expr
+end
+
 # ---------------------------------------------------------------------------
 # Move (`<<`) target resolution: a target is either a plain particle variable
 # or a dynamic-variable family member `x{e}` — never a value-level accessor
@@ -590,11 +650,12 @@ function walk_body(body, particle_vars::Set{Symbol}, dynamic_families::Set{Symbo
 
             target_exprs = [move_target_expr(t, particle_vars, dynamic_families, stmt) for t in target_inputs]
 
+            pos_args, diversity_expr = split_move_call_args(args)
             qexpr = proposal_expr(q, proposals_var)
             targets_expr = Expr(:vect, target_exprs...)
-            argfn = :(state -> ($(args...),))
+            argfn = :(state -> ($(pos_args...),))
             name = gensym(:step)
-            push!(stmts, :($name = WeightedSampling.Move($targets_expr, $qexpr, $argfn)))
+            push!(stmts, :($name = WeightedSampling.Move($targets_expr, $qexpr, $argfn, $diversity_expr)))
             push!(step_names, name)
 
         elseif is_particle_stmt(stmt)

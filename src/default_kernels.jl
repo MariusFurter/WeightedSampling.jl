@@ -48,6 +48,31 @@ macro generate_kernels(distributions...)
 end
 
 """
+    importance_kernel(proposal, target) -> WeightedKernel
+
+Build a `WeightedKernel` performing importance sampling: samples are drawn
+from `proposal` (via `rand`), weighted by the log density ratio between
+`target` and `proposal` (`logpdf(target, x) - logpdf(proposal, x)`), so the
+resulting weighted samples are a valid importance-sampling estimator for
+`target`. The kernel's `logpdf` field reports `target`'s log-density (not
+`proposal`'s), since that is the distribution the samples are meant to
+represent.
+
+`proposal` must support `rand`/`logpdf` (e.g. any `Distributions.jl`
+distribution); `target` only needs to support `logpdf`.
+
+# Examples
+```julia
+kernel = importance_kernel(Normal(0, 2), Normal(0, 1))
+```
+"""
+importance_kernel(proposal, target) = WeightedKernel(
+    () -> rand(proposal),
+    x -> logpdf(target, x) - logpdf(proposal, x),
+    x -> logpdf(target, x),
+)
+
+"""
     default_kernels
 
 `NamedTuple` of built-in `WeightedKernel`s covering most `Distributions.jl`

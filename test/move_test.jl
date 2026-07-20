@@ -104,3 +104,113 @@ end
 @testset "Move MH invariance (static-parameter posterior)" begin
     @test move_invariance_test()
 end
+
+"""
+    move_diversity_skip_test(; N=1_000)
+
+A `Move` with a `diversity_threshold` that is already satisfied (every target
+column fully diverse, i.e. all `N` values distinct) must be an exact no-op:
+`apply!` should leave the target column bit-for-bit unchanged, without even
+needing `state.root`/`state.depth` to be set up for scoring.
+"""
+function move_diversity_skip_test(; N=1_000)
+    Random.seed!(3)
+    θ0 = randn(N)
+    store = ColumnStore(N)
+    state = SMCState(store)
+    broadcast_setcol!(store, :θ, identity, (copy(θ0),))
+
+    move = Move([:θ], RW, s -> (0.3,), 0.99)  # threshold below the actual (1.0) diversity
+    apply!(move, state)
+
+    return getcol(store, :θ) == θ0
+end
+
+"""
+    move_diversity_run_test(; T=5, τ0=2.0, σ=1.0, N=50_000, n_moves=100, step_size=0.3, threshold=0.9)
+
+Mirrors `move_invariance_test`, but starts from COLLAPSED particles (all
+identical, as if just resampled to a single ancestor) and gates the move with
+`diversity_threshold=threshold`. Confirms:
+1. The move actually RUNS (particle values change from their initial
+   collapsed value) since collapsed particles start at diversity `1/N`, far
+   below the threshold.
+2. Diversity gating self-limits how far it goes: once the target column's
+   diversity crosses `threshold`, further `apply!` calls become no-ops again
+   (values stop changing) — this is the expected/intentional trade-off of
+   gating on diversity rather than always fully mixing to the target
+   distribution, and is worth confirming explicitly rather than assuming.
+3. The final diversity is indeed `>= threshold` (the gate's own postcondition).
+"""
+function move_diversity_run_test(; T=5, τ0=2.0, σ=1.0, N=50_000, n_moves=100, step_size=0.3, threshold=0.9)
+    Random.seed!(42)
+    y = randn(T) .* σ .+ 1.3
+
+    prior_var = τ0^2
+    obs_var = σ^2
+    post_var = 1 / (1 / prior_var + T / obs_var)
+    post_mean = post_var * (sum(y) / obs_var)
+
+    store = ColumnStore(N)
+    state = SMCState(store)
+    # Collapsed: every particle starts at the SAME value (diversity = 1/N).
+    broadcast_setcol!(store, :θ, identity, (fill(post_mean, N),))
+    θ_before = copy(getcol(store, :θ))
+
+    root = Sequence(
+        Sample(:θ, NormalKernel, s -> (Ref(0.0), Ref(τ0))),
+        (Observe(s -> Ref(y[t]), NormalKernel, s -> (getcol(s.store, :θ), Ref(σ))) for t in 1:T)...,
+    )
+    state.root = root
+    state.depth = T + 1
+
+    move = Move([:θ], RW, s -> (step_size,), threshold)
+    for _ in 1:n_moves
+        apply!(move, state)
+    end
+
+    θ_after_gate_hit = copy(getcol(store, :θ))
+    ran = θ_after_gate_hit != θ_before
+    gate_satisfied = marginal_diversity(store, [:θ]) >= threshold
+
+    # A few more moves: the gate should now be a no-op (self-limiting).
+    for _ in 1:5
+        apply!(move, state)
+    end
+    stopped = getcol(store, :θ) == θ_after_gate_hit
+
+    return ran && gate_satisfied && stopped
+end
+
+"""
+    move_diversity_marginal_not_joint_test(; N=1_000)
+
+Regression test for the "marginal, not joint, diversity" caveat: builds a
+target `α` with very few unique values (collapsed) and a target `β` with all
+`N` values distinct. The JOINT tuples `(α[i], β[i])` are then also all
+distinct (since `β` alone makes every tuple unique) — a diversity check based
+on joint-tuple uniqueness would report full diversity and could wrongly skip
+a move that `α` still badly needs. `marginal_diversity` must instead report
+the (low) diversity of `α`.
+"""
+function move_diversity_marginal_not_joint_test(; N=1_000, n_unique_α=5)
+    Random.seed!(4)
+    α = repeat(collect(1:n_unique_α), inner=N ÷ n_unique_α)
+    β = collect(1.0:N)  # all distinct
+
+    store = ColumnStore(N)
+    broadcast_setcol!(store, :α, identity, (α,))
+    broadcast_setcol!(store, :β, identity, (β,))
+
+    joint_diversity = length(unique(collect(zip(α, β)))) / N
+    marg_diversity = marginal_diversity(store, [:α, :β])
+
+    return joint_diversity ≈ 1.0 && marg_diversity ≈ n_unique_α / N
+end
+
+@testset "Move diversity gating" begin
+    @test move_diversity_skip_test()
+    @test move_diversity_run_test()
+    @test move_diversity_marginal_not_joint_test()
+end
+

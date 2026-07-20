@@ -5,7 +5,7 @@ using WeightedSampling: apply!, score!, score_logpdf, score_logpdf!,
     nparticles, hascol, getcol, colnames, broadcast_setcol!, resample!,
     ParticleTransformer, ScoreCtx,
     Assign, AccessorAssign, AccessorSample, Sample, Observe, Weight,
-    Sequence, Loop, Cond, Resample, Move,
+    Sequence, Loop, Cond, Resample, Move, marginal_diversity,
     icdf, stratified_resample, ess_perc, logsumexp,
     dynname
 
@@ -21,6 +21,7 @@ include("models.jl")
     include("dynamic_vars_test.jl")
     include("dynamic_move_test.jl")
     include("default_kernels_test.jl")
+    include("importance_kernel_test.jl")
     include("api_test.jl")
     include("show_test.jl")
 end

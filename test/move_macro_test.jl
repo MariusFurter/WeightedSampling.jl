@@ -63,3 +63,54 @@ end
 @testset "Macro: linear regression with << MH moves" begin
     @test linear_regression_mh_macro_test()
 end
+
+"""
+    linear_regression_mh_diversity_macro_test(; n_particles=10_000, atol_slope=0.3, atol_intercept=0.3)
+
+Same model as `linear_regression_mh_macro_test`, but the move is instead
+self-gated on particle diversity via the `<<` macro's `diversity=` keyword,
+with NO `if resampled` wrapper:
+
+    (α, β) << RW(0.1; diversity=0.9)
+
+Confirms the macro-level `diversity=` kwarg parses/threads through to `Move`
+correctly and still recovers the same posterior.
+"""
+function linear_regression_mh_diversity_macro_test(; n_particles=10_000, atol_slope=0.3, atol_intercept=0.3)
+    Random.seed!(42)
+
+    true_α = -1.0
+    true_β = 2.0
+    noise_std = 0.5
+    n_points = 10
+
+    xs = collect(range(0, 10, length=n_points))
+    ys = true_α .+ true_β .* xs .+ noise_std .* randn(n_points)
+    data = collect(zip(xs, ys))
+
+    @model function linear_regression(data)
+        α ~ Normal(0.0, 5.0)
+        β ~ Normal(0.0, 5.0)
+        for (x, y) in data
+            y => Normal(α + β * x, 0.5)
+            (α, β) << RW(0.1; diversity=0.9)
+        end
+    end
+
+    model = linear_regression(data; kernels=(Normal=NormalKernel,), proposals=(RW=RW,))
+    state = SMCState(ColumnStore(n_particles))
+    run!(model, state)
+
+    w = exp_norm(state.weights)
+    est_α = sum(getcol(state.store, :α) .* w)
+    est_β = sum(getcol(state.store, :β) .* w)
+
+    α_ok = isapprox(est_α, true_α, atol=atol_intercept)
+    β_ok = isapprox(est_β, true_β, atol=atol_slope)
+
+    return α_ok && β_ok
+end
+
+@testset "Macro: linear regression with << MH moves gated by diversity=" begin
+    @test linear_regression_mh_diversity_macro_test()
+end

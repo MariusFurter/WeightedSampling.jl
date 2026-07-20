@@ -59,8 +59,7 @@ function run_ws_benchmark(data_dir::AbstractString, N::Int; seed::Int=1)
     elapsed = stats.time - stats.compile_time
 
     weights = state.weights
-    alpha_samples = state[:alpha]
-    alpha_est = [expectation([p[j] for p in alpha_samples], weights) for j in 1:J]
+    alpha_est = [expectation(state[Symbol(:alpha_, j)], weights) for j in 1:J]
     mu_alpha_est = expectation(state[:mu_alpha], weights)
     tau_alpha_est = expectation(state[:tau_alpha], weights)
     beta_est = expectation(state[:beta], weights)

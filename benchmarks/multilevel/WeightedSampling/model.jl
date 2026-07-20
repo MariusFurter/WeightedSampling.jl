@@ -22,18 +22,20 @@ using WeightedSampling
     tau_alpha ~ Exponential(1.0)
     beta ~ Normal(0.0, 10.0)
     sigma ~ Exponential(1.0)
-    alpha .= zeros(J)
     for j in 1:J
-        alpha[j] ~ Normal(mu_alpha, tau_alpha)
+        alpha{j} ~ Normal(mu_alpha, tau_alpha)
         obs = groups[j]
         for (x, y) in obs
-            y => Normal(alpha[j] + beta * x, sigma)
-        end
-        if resampled
-            mu_alpha << autoRW()
-            tau_alpha << autoRW(1e-3, (0.0, Inf))
-            beta << autoRW()
-            sigma << autoRW(1e-3, (0.0, Inf))
+            y => Normal(alpha{j} + beta * x, sigma)
+            if resampled
+                alpha{j} << autoRW(diversity = 0.1)
+            end
+        end      
+        if j % 10 == 0
+            mu_alpha << autoRW(diversity = 0.1)
+            tau_alpha << autoRW(1e-3, (0.0, Inf); diversity = 0.1)
+            beta << autoRW(diversity = 0.1)
+            sigma << autoRW(1e-3, (0.0, Inf); diversity = 0.1)
         end
     end
 end

@@ -6,20 +6,12 @@ regression model (`model.py`), and prints timing + inference-quality metrics
 as `key=value` lines to stdout (same format as `../WeightedSampling/run_ws.jl`,
 for easy consumption by `../run_benchmark.py`).
 
-Also reports CPU time / effective sample, using arviz's `ess` (bulk ESS,
-rank-normalized-split estimator) computed over all scalar sites (`mu_alpha`,
-`tau_alpha`, `beta`, `sigma`, and each component of `alpha`). NOTE: arviz's
-ESS estimator can exceed `num_samples` (e.g. under anti-correlated/antithetic
-sampling) -- this is expected, not a bug, so `ess_min`/`ess_mean` are reported
-as-is without clipping.
-
 Usage: python run_numpyro.py <data_dir> [--num_warmup 500] [--num_samples 1000] [--seed 0]
 """
 import argparse
 import os
 import time
 
-import arviz as az
 import jax
 import numpy as np
 from jax import random
@@ -83,24 +75,11 @@ def run_numpyro_benchmark(data_dir, num_warmup=500, num_samples=1000, seed=0):
 
     rmse_alpha = float(np.sqrt(np.mean((alpha_est - true_alpha) ** 2)))
 
-    # Effective sample size (arviz bulk ESS) over every scalar site, flattened
-    # across the vector-valued `alpha` site's J components. Computed from the
-    # same `samples` used above (single chain; arviz adds the chain dim).
-    idata = az.from_numpyro(mcmc)
-    ess_ds = az.ess(idata)
-    ess_values = np.concatenate([np.atleast_1d(ess_ds[var].values).ravel() for var in ess_ds.data_vars])
-    ess_min = float(np.min(ess_values))
-    ess_mean = float(np.mean(ess_values))
-
     print(f"J={J}")
     print(f"n_obs={n_obs}")
     print(f"num_warmup={num_warmup}")
     print(f"num_samples={num_samples}")
     print(f"elapsed_time={elapsed:.6f}")
-    print(f"ess_min={ess_min:.4f}")
-    print(f"ess_mean={ess_mean:.4f}")
-    print(f"time_per_ess_min={elapsed / ess_min:.6f}")
-    print(f"time_per_ess_mean={elapsed / ess_mean:.6f}")
     print(f"rmse_alpha={rmse_alpha:.6f}")
     print(f"mu_alpha_est={mu_alpha_est:.6f}")
     print(f"mu_alpha_err={abs(mu_alpha_est - truth['mu_alpha']):.6f}")

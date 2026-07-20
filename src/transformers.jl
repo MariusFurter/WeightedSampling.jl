@@ -518,17 +518,51 @@ Depth- and score-neutral: `score!` is a no-op and `apply!` does not advance
 `state.depth`. A move contributes nothing to the trace density (it only
 reshuffles the target coordinate given the latest randomness), and staying
 depth-neutral keeps `if resampled; x << q(); end` robust under re-scoring.
+
+# Diversity gating
+- `diversity_threshold::Union{Nothing,Float64}`: if not `nothing`, `apply!`
+  first computes, for each target column, the fraction of unique values
+  (exact equality — resampling duplicates particles by exact copy, so this
+  cheaply detects post-resample collapse) and takes the MINIMUM across all
+  targets (the *marginal* diversity — deliberately not the diversity of the
+  joint tuples, which can look artificially high even when every individual
+  target has collapsed). The whole move (proposal, scoring, accept/reject) is
+  skipped whenever this minimum is `>= diversity_threshold`. `nothing`
+  (default) means always move, matching the previous behavior. This makes the
+  `if resampled; x << q(); end` wrapper optional: a move can self-gate on
+  actual particle collapse instead of merely "a resample just happened".
 """
-struct Move{T,Q,F} <: ParticleTransformer
+struct Move{T,Q,F,D} <: ParticleTransformer
     targets::T
     proposal::Q
     argfn::F
+    diversity_threshold::D
+end
+
+Move(targets, proposal, argfn) = Move(targets, proposal, argfn, nothing)
+
+"""
+    marginal_diversity(store, targets)
+
+Minimum, over `targets`, of the fraction of unique values in each target
+column (`length(unique(col)) / length(col)`). Used by `Move`'s diversity
+gating: the min-over-marginals is deliberately more conservative than the
+diversity of the joint tuples, per `Move`'s docstring.
+"""
+function marginal_diversity(store, targets)
+    return minimum(targets) do c
+        col = getcol(store, c)
+        length(unique(col)) / length(col)
+    end
 end
 
 """
     apply!(t::Move, state::SMCState)
 
-Run one Metropolis–Hastings step:
+If `t.diversity_threshold !== nothing` and `marginal_diversity(state.store,
+t.targets) >= t.diversity_threshold`, this is a no-op (particles are already
+diverse enough on every target, so the move is skipped). Otherwise runs one
+Metropolis–Hastings step:
 1. Capture `depth = state.depth` (before anything, since `Move` is
    depth-neutral) and propose new target values via `t.proposal`.
 2. Score the trace log-density at the old values into `state.score_buf1`
@@ -546,6 +580,11 @@ current target and must not change importance weights or the evidence.
 function apply!(t::Move, state::SMCState)
     store = state.store
     targets = t.targets
+
+    if t.diversity_threshold !== nothing && marginal_diversity(store, targets) >= t.diversity_threshold
+        return nothing
+    end
+
     depth = state.depth
     args = t.argfn(state)
 
@@ -607,7 +646,7 @@ _label(t::Sequence) = "Sequence"
 _label(t::Loop) = "Loop"
 _label(t::Cond) = "Cond"
 _label(t::Resample) = "Resample()"
-_label(t::Move) = "Move($(t.targets))"
+_label(t::Move) = t.diversity_threshold === nothing ? "Move($(t.targets))" : "Move($(t.targets), diversity_threshold=$(t.diversity_threshold))"
 
 _children(t::ParticleTransformer) = ParticleTransformer[]
 _children(t::Sequence) = collect(ParticleTransformer, t.steps)
