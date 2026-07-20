@@ -19,7 +19,10 @@ transformers for the model.
   the move on particle diversity — see "Diversity-gated moves" below. Without
   it, the move always runs (previous behavior).
 - `x = expr` (and compound `x += e`, …) — build-time locals; a
-  particle-variable target is an error (use `.=` instead).
+  particle-variable target is an error (use `.=` instead), and referencing a
+  particle variable or dynamic-variable family `x{e}` anywhere on the
+  right-hand side is also an error (use `.=`/`~` instead), since a plain `=`
+  only runs once at build time and cannot read a per-particle column.
 - `for x in coll ... end` — a `Loop` (not unrolled).
 - `if cond ... end` — a `Cond` (no `else`). `cond` must not reference a
   particle variable, but may reference `resampled` (e.g. `if resampled ...`).
@@ -556,18 +559,26 @@ is_update_assign(stmt) = stmt isa Expr && stmt.head in UPDATE_ASSIGN_HEADS
 is_dotted_update(stmt) = stmt isa Expr && stmt.head in DOTTED_UPDATE_HEADS
 
 """
-    collect_particle_vars(expr, particle_vars) -> Set{Symbol}
+    collect_particle_vars(expr, particle_vars, dynamic_families=Set{Symbol}()) -> Set{Symbol}
 
-The subset of `particle_vars` that `expr` references (used only for building
-clear error messages when a plain/compound assignment targets a particle
-variable).
+The subset of `particle_vars` that `expr` references, plus the base symbol of
+any dynamic-variable family read (`x{e}` where `x in dynamic_families`) found
+in `expr`. Used only for building clear error messages when a plain/compound
+assignment targets (LHS) or reads (RHS) a particle-backed value — see the
+`= `/compound-update branch of `walk_body`. `dynamic_families` defaults to
+empty so LHS-only callers need not pass it.
 """
-function collect_particle_vars(expr, particle_vars::Set{Symbol}, acc::Set{Symbol}=Set{Symbol}())
+function collect_particle_vars(expr, particle_vars::Set{Symbol}, dynamic_families::Set{Symbol}=Set{Symbol}(),
+    acc::Set{Symbol}=Set{Symbol}())
     if expr isa Symbol
         expr in particle_vars && push!(acc, expr)
     elseif expr isa Expr
+        if expr.head == :curly && length(expr.args) == 2 && expr.args[1] isa Symbol &&
+           expr.args[1] in dynamic_families
+            push!(acc, expr.args[1])
+        end
         for a in expr.args
-            collect_particle_vars(a, particle_vars, acc)
+            collect_particle_vars(a, particle_vars, dynamic_families, acc)
         end
     end
     return acc
@@ -596,7 +607,11 @@ way a weighting statement is.
 Local (`=`) and compound (`+=`, …) assignments are kept as ordinary Julia
 code rather than transformer steps, since they only need to run once (at build
 time) to be captured by later closures. A particle-variable target is a
-compile-time error (use `.=` instead).
+compile-time error (use `.=` instead), and so is a particle variable or
+dynamic-variable family reference anywhere on the right-hand side (use
+`.=`/`~` instead) — such code would otherwise silently reference an undefined
+Julia local (or, worse, an unrelated global) at runtime instead of reading the
+actual particle column.
 """
 function walk_body(body, particle_vars::Set{Symbol}, dynamic_families::Set{Symbol}, kernels_var::Symbol, proposals_var::Symbol)
     stmts = Expr[]
@@ -673,12 +688,19 @@ function walk_body(body, particle_vars::Set{Symbol}, dynamic_families::Set{Symbo
                   "write it out explicitly, e.g. `x .= x .+ e` instead of `x .+= e`: $stmt")
 
         elseif @capture(stmt, _ = _) || is_update_assign(stmt)
-            hit = collect_particle_vars(stmt.args[1], particle_vars)
-            if !isempty(hit)
-                error("Assignment `$stmt` targets particle variable(s) $(collect(hit)); a plain " *
+            lhs_hit = collect_particle_vars(stmt.args[1], particle_vars)
+            if !isempty(lhs_hit)
+                error("Assignment `$stmt` targets particle variable(s) $(collect(lhs_hit)); a plain " *
                       "`=` or a compound update (`+=`, `-=`, …) only binds a build-time local and " *
                       "does NOT update the particle column. Use `x .= …` to update the particle " *
                       "column, or rename the local if you did not mean the particle variable.")
+            end
+            rhs_hit = collect_particle_vars(stmt.args[2], particle_vars, dynamic_families)
+            if !isempty(rhs_hit)
+                error("Assignment `$stmt` reads particle variable(s)/dynamic-variable family/families " *
+                      "$(collect(rhs_hit)) on its right-hand side; a plain `=` or compound update " *
+                      "(`+=`, `-=`, …) only runs once at build time and cannot read a per-particle " *
+                      "column. Use `x .= …` or `x ~ …` instead.")
             end
             push!(stmts, stmt)
 
