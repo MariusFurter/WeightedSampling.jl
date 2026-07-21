@@ -6,7 +6,8 @@ using GenParticleFilters
 using WeightedSampling
 using Random
 using Printf
-using Statistics: mean
+using Statistics: mean, median
+using BenchmarkTools
 
 #=
 Comparing performance and usability of WeightedSampling vs GenParticleFilters
@@ -377,6 +378,15 @@ function run_benchmark(; T=200, N=1_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed=4
     @printf("Posterior mean (filter): %.4f, exact: %.4f\n", final_x_mean, exact_mean)
     @printf("Log evidence (filter): %.4f, exact: %.4f\n", lml, exact_evidence)
 
+    # Machine-parseable line, same format/fields as benchmarks/ssm/'s
+    # WeightedSampling and SequentialMonteCarlo.jl scripts, so results can be
+    # merged into the same tidy CSV via benchmarks/ssm/parse_results.py. Kept
+    # as two distinct "frameworks" (naive vs. unfold) since their feasible
+    # T/N ranges differ by orders of magnitude (see module docstring).
+    framework = unfold ? "GenParticleFilters-unfold" : "GenParticleFilters-naive"
+    @printf("RESULT,%s,T=%d,N=%d,elapsed_s=%.6f,alloc_mib=%.4f,post_mean=%.6f,exact_mean=%.6f\n",
+        framework, T, N, elapsed, stats.bytes / 2^20, final_x_mean, exact_mean)
+
     return state
 end
 
@@ -491,6 +501,73 @@ function bench_single_step(; T=200, N=1000, a=0.9, q=1.0, r=0.5, x0_std=1.0, see
     return gen_stats, ws_stats
 end
 
+"""
+    bench_single_update_gen(; N=1000, prefix_T=50, ...)
+
+BenchmarkTools-based version of the Gen half of `bench_single_step`, using
+the same "prefix state + `setup=` deepcopy per sample" methodology as
+`benchmarks/ssm/bench_single_update.jl`'s `bench_ws`, so the resulting
+`gen_median_us`/`gen_alloc_kib` numbers are directly comparable to that
+script's `ws_median_us`/`ws_alloc_kib`/`smc_per_step_us` (same model,
+params, and forced-resample-every-step policy -- `ess_threshold=1.0` here,
+matching the other frameworks' `ess_perc_min=1.0`/`essThreshold=1.0`
+defaults). `pf_update!` mutates its state in place, so each `@benchmark`
+sample needs a fresh `deepcopy` of the prefix state (excluded from the
+timed region via `setup=`, `evals=1`).
+"""
+function bench_single_update_gen(; N=1000, prefix_T=50, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed=42, ess_threshold=1.0)
+    Random.seed!(seed)
+    _, data = simulate_lgssm1d(prefix_T + 1, a, q, r, x0_std)
+    prefix_data = data[1:prefix_T]
+    T_final = prefix_T + 1
+    y_final = data[T_final]
+
+    # Warm up JIT on a tiny throwaway filter before building the real prefix.
+    init_obs_warm = Gen.choicemap((:xs => 1 => :y, prefix_data[1]))
+    warm_state = GenParticleFilters.pf_initialize(lgssm1d_unfold, (1, a, q, r, x0_std), init_obs_warm, 10)
+    obs_warm = Gen.choicemap((:xs => 2 => :y, prefix_data[2]))
+    pf_update!(warm_state, (2, a, q, r, x0_std),
+        (UnknownChange(), NoChange(), NoChange(), NoChange(), NoChange()), obs_warm)
+
+    # Build the real (untimed) prefix state, advanced through `prefix_T` steps.
+    init_obs = Gen.choicemap((:xs => 1 => :y, prefix_data[1]))
+    base_state = GenParticleFilters.pf_initialize(lgssm1d_unfold, (1, a, q, r, x0_std), init_obs, N)
+    for t in 2:prefix_T
+        if effective_sample_size(base_state) < ess_threshold * N
+            pf_resample!(base_state, :stratified)
+        end
+        obs = Gen.choicemap((:xs => t => :y, prefix_data[t]))
+        pf_update!(base_state, (t, a, q, r, x0_std),
+            (UnknownChange(), NoChange(), NoChange(), NoChange(), NoChange()), obs)
+    end
+
+    obs_final = Gen.choicemap((:xs => T_final => :y, y_final))
+    bench = @benchmark(
+        begin
+            if effective_sample_size(st) < $ess_threshold * $N
+                pf_resample!(st, :stratified)
+            end
+            pf_update!(st, ($T_final, $a, $q, $r, $x0_std),
+                (UnknownChange(), NoChange(), NoChange(), NoChange(), NoChange()), $obs_final)
+        end,
+        setup = (st = deepcopy($base_state)),
+        evals = 1
+    )
+
+    gen_median_us = median(bench).time / 1e3
+    gen_alloc_kib = bench.memory / 2^10
+
+    @printf("N=%d, Gen pf_update! (Unfold, ESS-gated resample + mutate + observe): median=%.3f us, alloc=%.2f KiB\n",
+        N, gen_median_us, gen_alloc_kib)
+    # Same framework label as benchmarks/ssm/bench_single_update.jl so both
+    # results merge into one CSV via parse_results.py; distinct metric names
+    # (gen_ prefix) avoid colliding with that script's ws_/smc_ metrics.
+    @printf("RESULT,bench_single_update,N=%d,gen_median_us=%.4f,gen_alloc_kib=%.4f\n",
+        N, gen_median_us, gen_alloc_kib)
+
+    return bench
+end
+
 # =============================================================================
 # Run everything
 # =============================================================================
@@ -517,6 +594,47 @@ function compare_all()
     return nothing
 end
 
+# =============================================================================
+# CLI entry point
+# =============================================================================
+#
+# Usage:
+#   julia lgssm1d.jl                    # runs compare_all() (default demo)
+#   julia lgssm1d.jl naive [T] [N]      # naive (no Unfold) run_benchmark, RESULT line
+#   julia lgssm1d.jl unfold [T] [N] [batch]  # Unfold run_benchmark, RESULT line
+#   julia lgssm1d.jl single [N]         # BenchmarkTools single-update bench, RESULT line
+#
+# Defaults for each mode are chosen to keep runtime reasonable given each
+# model's very different scaling (see module docstring): the naive model is
+# O(T^2*N) so T must stay tiny; the Unfold model is O(T*N) but with a much
+# larger constant factor (~100x) than WeightedSampling/SequentialMonteCarlo.jl,
+# so T/N are scaled down accordingly relative to `benchmarks/ssm`'s defaults
+# (T=5000, N=10_000).
+function main(args)
+    if isempty(args)
+        compare_all()
+        return nothing
+    end
+
+    mode = args[1]
+    if mode == "naive"
+        T = length(args) >= 2 ? parse(Int, args[2]) : 50
+        N = length(args) >= 3 ? parse(Int, args[3]) : 500
+        run_benchmark(; unfold=false, T=T, N=N)
+    elseif mode == "unfold"
+        T = length(args) >= 2 ? parse(Int, args[2]) : 500
+        N = length(args) >= 3 ? parse(Int, args[3]) : 1000
+        batch = length(args) >= 4 ? parse(Int, args[4]) : 1
+        run_benchmark(; unfold=true, T=T, N=N, batch=batch)
+    elseif mode == "single"
+        N = length(args) >= 2 ? parse(Int, args[2]) : 1000
+        bench_single_update_gen(; N=N)
+    else
+        error("Unknown mode \"$mode\"; expected \"naive\", \"unfold\", or \"single\".")
+    end
+    return nothing
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
-    compare_all()
+    main(ARGS)
 end

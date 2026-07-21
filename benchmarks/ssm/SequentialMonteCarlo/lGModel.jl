@@ -6,6 +6,8 @@ using RNGPool
 using Random
 using Printf
 
+include(joinpath(@__DIR__, "..", "simulate.jl"))
+
 """
 1D linear-Gaussian state-space model, identical in structure/parameters to
 the LibBi reference model in `benchmarks/ssm/libbi/lgssm1d/LGSSM1D.bi` and to
@@ -60,52 +62,8 @@ function make_lgssm1d_model(ys::Vector{Float64}, a, q, r, x0_std)
     return SMCModel(M!, lG, n, Float64Particle, Nothing)
 end
 
-"""
-    simulate_lgssm1d(n, a, q, r, x0_std)
-
-Simulate one trajectory/observation sequence from the model above (matching
-`WeightedSampling/lgssm1d.jl`'s `simulate_lgssm1d`), returning `(states,
-observations)` of length `n`.
-"""
-function simulate_lgssm1d(n::Int, a, q, r, x0_std)
-    states = Vector{Float64}(undef, n)
-    observations = Vector{Float64}(undef, n)
-    x = x0_std * randn()
-    for t in 1:n
-        x = a * x + q * randn()
-        states[t] = x
-        observations[t] = x + r * randn()
-    end
-    return states, observations
-end
-
-"""
-    kalman_filter_evidence(data, a, q, r, x0_std)
-
-Exact Kalman filter for this model (matches `WeightedSampling/lgssm1d.jl`'s
-helper of the same name). Returns `(posterior_mean_final, log_evidence)`,
-used as a correctness check for the particle filter.
-"""
-function kalman_filter_evidence(data, a, q, r, x0_std)
-    μ, P = 0.0, x0_std^2
-    log_evidence = 0.0
-    for y in data
-        μ_pred = a * μ
-        P_pred = a^2 * P + q^2
-
-        S = P_pred + r^2
-        residual = y - μ_pred
-        log_evidence += -0.5 * (log(2π) + log(S) + residual^2 / S)
-
-        K = P_pred / S
-        μ = μ_pred + K * residual
-        P = (1 - K) * P_pred
-    end
-    return μ, log_evidence
-end
-
 function run_benchmark(; n=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed=42,
-    ess_perc_min=0.5)
+    ess_perc_min=1.0)
     if Threads.nthreads() != 1
         error("Threads.nthreads()=$(Threads.nthreads()); this script requires " *
               "Threads.nthreads()==1. RNGPool's engine pool is populated at " *
@@ -146,6 +104,7 @@ function run_benchmark(; n=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed
 
     stats = @timed smc!(model, smcio)
     elapsed = stats.time - stats.compile_time
+    alloc_mib = stats.bytes / 2^20
 
     exact_mean, exact_evidence = kalman_filter_evidence(data, a, q, r, x0_std)
     filter_mean = SequentialMonteCarlo.eta(smcio, p -> p.x, true, n)
@@ -153,13 +112,17 @@ function run_benchmark(; n=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed
 
     @printf("n=%d, N=%d\n", n, N)
     @printf("Elapsed time: %.3f s\n", elapsed)
-    @printf("Allocated: %.2f MiB\n", stats.bytes / 2^20)
+    @printf("Allocated: %.2f MiB\n", alloc_mib)
     @printf("Posterior mean (filter): %.4f, exact: %.4f\n", filter_mean, exact_mean)
     @printf("Log evidence (filter): %.4f, exact: %.4f\n", filter_evidence, exact_evidence)
+    @printf("RESULT,SequentialMonteCarlo,T=%d,N=%d,elapsed_s=%.6f,alloc_mib=%.4f,post_mean=%.6f,exact_mean=%.6f\n",
+        n, N, elapsed, alloc_mib, filter_mean, exact_mean)
 
     return smcio
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    run_benchmark()
+    T = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 5000
+    N = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 10_000
+    run_benchmark(; n=T, N=N)
 end

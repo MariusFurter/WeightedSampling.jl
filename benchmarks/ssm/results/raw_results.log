@@ -1,0 +1,145 @@
+T=5000, N=1000
+Elapsed time: 0.155 s
+Allocated: 159.01 MiB
+Posterior mean (filter): -0.8057, exact: -0.7933
+RESULT,WeightedSampling,T=5000,N=1000,elapsed_s=0.155462,alloc_mib=159.0145,post_mean=-0.805698,exact_mean=-0.793343
+n=5000, N=1000
+Elapsed time: 0.084 s
+Allocated: 0.00 MiB
+Posterior mean (filter): -0.7985, exact: -0.7933
+Log evidence (filter): -8056.1603, exact: -8052.1169
+RESULT,SequentialMonteCarlo,T=5000,N=1000,elapsed_s=0.083722,alloc_mib=0.0000,post_mean=-0.798542,exact_mean=-0.793343
+[mode=bench-filter] Repeated filtering benchmark
+[bench] Running repeated filter benchmark via hyperfine
+[bench] NPARTICLES=1000, REPEATS=10, WARMUP=1
+Benchmark 1: libbi filter --filter bootstrap --model-file LGSSM1D.bi --obs-file data/obs.nc --start-time 0 --end-time 5000 --noutputs 0 --nparticles 1000 --ess-rel 1.0 --resampler systematic --nthreads 1 --seed 43 --output-file results/filter_bootstrap.nc
+  Time (mean ± σ):     485.6 ms ±   5.4 ms    [User: 342.3 ms, System: 55.9 ms]
+  Range (min … max):   479.1 ms … 495.0 ms    10 runs
+ 
+
+[bench] Summary (NPARTICLES=1000)
+[bench] wall   mean=0.4856s stddev=0.0054s median=0.4843s min=0.4791s max=0.4950s
+[bench] user   mean=0.3423s
+[bench] system mean=0.0559s
+RESULT,libbi,T=5000,N=1000,wall_mean_s=0.485555,wall_median_s=0.484258,user_mean_s=0.342349,sys_mean_s=0.055931
+
+Done.
+  observations: data/obs.nc
+  filter output: results/filter_bootstrap.nc
+  hyperfine json: /tmp/libbi_pf_hyperfine_T5000_N1000.json
+T=5000, N=10000
+Elapsed time: 0.977 s
+Allocated: 1565.41 MiB
+Posterior mean (filter): -0.7817, exact: -0.7933
+RESULT,WeightedSampling,T=5000,N=10000,elapsed_s=0.976664,alloc_mib=1565.4051,post_mean=-0.781715,exact_mean=-0.793343
+n=5000, N=10000
+Elapsed time: 0.853 s
+Allocated: 0.00 MiB
+Posterior mean (filter): -0.7833, exact: -0.7933
+Log evidence (filter): -8053.4055, exact: -8052.1169
+RESULT,SequentialMonteCarlo,T=5000,N=10000,elapsed_s=0.852624,alloc_mib=0.0000,post_mean=-0.783255,exact_mean=-0.793343
+[mode=bench-filter] Repeated filtering benchmark
+[bench] Running repeated filter benchmark via hyperfine
+[bench] NPARTICLES=10000, REPEATS=10, WARMUP=1
+Benchmark 1: libbi filter --filter bootstrap --model-file LGSSM1D.bi --obs-file data/obs.nc --start-time 0 --end-time 5000 --noutputs 0 --nparticles 10000 --ess-rel 1.0 --resampler systematic --nthreads 1 --seed 43 --output-file results/filter_bootstrap.nc
+  Time (mean ± σ):      1.567 s ±  0.015 s    [User: 1.208 s, System: 0.223 s]
+  Range (min … max):    1.545 s …  1.593 s    10 runs
+ 
+
+[bench] Summary (NPARTICLES=10000)
+[bench] wall   mean=1.5673s stddev=0.0147s median=1.5699s min=1.5448s max=1.5930s
+[bench] user   mean=1.2085s
+[bench] system mean=0.2229s
+RESULT,libbi,T=5000,N=10000,wall_mean_s=1.567344,wall_median_s=1.569853,user_mean_s=1.208467,sys_mean_s=0.222915
+
+Done.
+  observations: data/obs.nc
+  filter output: results/filter_bootstrap.nc
+  hyperfine json: /tmp/libbi_pf_hyperfine_T5000_N10000.json
+T=5000, N=100000
+Elapsed time: 10.133 s
+Allocated: 15316.78 MiB
+Posterior mean (filter): -0.7929, exact: -0.7933
+RESULT,WeightedSampling,T=5000,N=100000,elapsed_s=10.133462,alloc_mib=15316.7801,post_mean=-0.792851,exact_mean=-0.793343
+n=5000, N=100000
+Elapsed time: 8.601 s
+Allocated: 0.00 MiB
+Posterior mean (filter): -0.7933, exact: -0.7933
+Log evidence (filter): -8052.5267, exact: -8052.1169
+RESULT,SequentialMonteCarlo,T=5000,N=100000,elapsed_s=8.600708,alloc_mib=0.0000,post_mean=-0.793321,exact_mean=-0.793343
+[mode=bench-filter] Repeated filtering benchmark
+[bench] Running repeated filter benchmark via hyperfine
+[bench] NPARTICLES=100000, REPEATS=10, WARMUP=1
+Benchmark 1: libbi filter --filter bootstrap --model-file LGSSM1D.bi --obs-file data/obs.nc --start-time 0 --end-time 5000 --noutputs 0 --nparticles 100000 --ess-rel 1.0 --resampler systematic --nthreads 1 --seed 43 --output-file results/filter_bootstrap.nc
+  Time (mean ± σ):     20.128 s ±  0.677 s    [User: 9.817 s, System: 9.632 s]
+  Range (min … max):   19.470 s … 21.122 s    10 runs
+ 
+
+[bench] Summary (NPARTICLES=100000)
+[bench] wall   mean=20.1282s stddev=0.6766s median=19.7535s min=19.4695s max=21.1220s
+[bench] user   mean=9.8167s
+[bench] system mean=9.6322s
+RESULT,libbi,T=5000,N=100000,wall_mean_s=20.128208,wall_median_s=19.753542,user_mean_s=9.816683,sys_mean_s=9.632205
+
+Done.
+  observations: data/obs.nc
+  filter output: results/filter_bootstrap.nc
+  hyperfine json: /tmp/libbi_pf_hyperfine_T5000_N100000.json
+T=1000, N=10000
+Elapsed time: 0.253 s
+Allocated: 313.21 MiB
+Posterior mean (filter): -1.7270, exact: -1.7191
+RESULT,WeightedSampling,T=1000,N=10000,elapsed_s=0.253317,alloc_mib=313.2078,post_mean=-1.727015,exact_mean=-1.719123
+n=1000, N=10000
+Elapsed time: 0.178 s
+Allocated: 0.00 MiB
+Posterior mean (filter): -1.7287, exact: -1.7191
+Log evidence (filter): -1577.9642, exact: -1577.5287
+RESULT,SequentialMonteCarlo,T=1000,N=10000,elapsed_s=0.178448,alloc_mib=0.0000,post_mean=-1.728667,exact_mean=-1.719123
+[mode=bench-filter] Repeated filtering benchmark
+[bench] Running repeated filter benchmark via hyperfine
+[bench] NPARTICLES=10000, REPEATS=10, WARMUP=1
+Benchmark 1: libbi filter --filter bootstrap --model-file LGSSM1D.bi --obs-file data/obs.nc --start-time 0 --end-time 1000 --noutputs 0 --nparticles 10000 --ess-rel 1.0 --resampler systematic --nthreads 1 --seed 43 --output-file results/filter_bootstrap.nc
+  Time (mean ± σ):     562.2 ms ±   4.6 ms    [User: 397.4 ms, System: 72.6 ms]
+  Range (min … max):   556.2 ms … 571.7 ms    10 runs
+ 
+
+[bench] Summary (NPARTICLES=10000)
+[bench] wall   mean=0.5622s stddev=0.0046s median=0.5612s min=0.5562s max=0.5717s
+[bench] user   mean=0.3974s
+[bench] system mean=0.0726s
+RESULT,libbi,T=1000,N=10000,wall_mean_s=0.562216,wall_median_s=0.561238,user_mean_s=0.397373,sys_mean_s=0.072589
+
+Done.
+  observations: data/obs.nc
+  filter output: results/filter_bootstrap.nc
+  hyperfine json: /tmp/libbi_pf_hyperfine_T1000_N10000.json
+T=20000, N=10000
+Elapsed time: 3.764 s
+Allocated: 6261.14 MiB
+Posterior mean (filter): -4.1586, exact: -4.1961
+RESULT,WeightedSampling,T=20000,N=10000,elapsed_s=3.763939,alloc_mib=6261.1449,post_mean=-4.158611,exact_mean=-4.196130
+n=20000, N=10000
+Elapsed time: 3.558 s
+Allocated: 0.00 MiB
+Posterior mean (filter): -4.2021, exact: -4.1961
+Log evidence (filter): -31920.4961, exact: -31915.3550
+RESULT,SequentialMonteCarlo,T=20000,N=10000,elapsed_s=3.558226,alloc_mib=0.0000,post_mean=-4.202148,exact_mean=-4.196130
+[mode=bench-filter] Repeated filtering benchmark
+[bench] Running repeated filter benchmark via hyperfine
+[bench] NPARTICLES=10000, REPEATS=10, WARMUP=1
+Benchmark 1: libbi filter --filter bootstrap --model-file LGSSM1D.bi --obs-file data/obs.nc --start-time 0 --end-time 20000 --noutputs 0 --nparticles 10000 --ess-rel 1.0 --resampler systematic --nthreads 1 --seed 43 --output-file results/filter_bootstrap.nc
+  Time (mean ± σ):      2.351 s ±  0.038 s    [User: 1.976 s, System: 0.231 s]
+  Range (min … max):    2.250 s …  2.379 s    10 runs
+ 
+
+[bench] Summary (NPARTICLES=10000)
+[bench] wall   mean=2.3506s stddev=0.0380s median=2.3592s min=2.2496s max=2.3792s
+[bench] user   mean=1.9764s
+[bench] system mean=0.2311s
+RESULT,libbi,T=20000,N=10000,wall_mean_s=2.350643,wall_median_s=2.359242,user_mean_s=1.976366,sys_mean_s=0.231063
+
+Done.
+  observations: data/obs.nc
+  filter output: results/filter_bootstrap.nc
+  hyperfine json: /tmp/libbi_pf_hyperfine_T20000_N10000.json

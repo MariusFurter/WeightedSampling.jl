@@ -14,7 +14,10 @@ T="${T:-100}"
 NPARTICLES="${NPARTICLES:-2000}"
 DATA_SEED="${DATA_SEED:-42}"
 FILTER_SEED="${FILTER_SEED:-43}"
-ESS_REL="${ESS_REL:-0.5}"
+# Default 1.0 forces resampling at every step (relative ESS is always <= 1),
+# matching the "always resample" default used by the WeightedSampling and
+# SequentialMonteCarlo.jl benchmarks in this repo for a fair comparison.
+ESS_REL="${ESS_REL:-1.0}"
 NTHREADS="${NTHREADS:-1}"
 MODE="${MODE:-all}"
 
@@ -191,76 +194,52 @@ benchmark_filter_repeated() {
     n_target="$(calibrate_nparticles_for_target)"
   fi
 
-  local i parsed real_s user_s sys_s
-  local real_csv=""
-  local user_csv=""
-  local sys_csv=""
-
-  echo "[bench] Running repeated filter benchmark"
+  echo "[bench] Running repeated filter benchmark via hyperfine"
   echo "[bench] NPARTICLES=$n_target, REPEATS=$REPEATS, WARMUP=$WARMUP"
 
-  if (( WARMUP > 0 )); then
-    for (( i=1; i<=WARMUP; i++ )); do
-      echo "[bench] warmup $i/$WARMUP"
-      time_filter_once "$n_target" "-$i" >/dev/null
-    done
+  if ! command -v hyperfine >/dev/null 2>&1; then
+    echo "[bench] ERROR: hyperfine not found on PATH. Install via 'brew install hyperfine'." >&2
+    exit 1
   fi
 
-  for (( i=1; i<=REPEATS; i++ )); do
-    parsed="$(time_filter_once "$n_target" "$i")"
-    read -r real_s user_s sys_s <<<"$parsed"
+  local hf_json="/tmp/libbi_pf_hyperfine_T${T}_N${n_target}.json"
+  local filter_cmd
+  filter_cmd="$(printf 'libbi filter --filter bootstrap --model-file %q --obs-file %q --start-time 0 --end-time %q --noutputs 0 --nparticles %q --ess-rel %q --resampler systematic --nthreads %q --seed %q --output-file %q' \
+    "$MODEL_FILE" "$DATA_FILE" "$T" "$n_target" "$ESS_REL" "$NTHREADS" "$FILTER_SEED" "$RESULTS_FILE")"
 
-    real_csv+="${real_s},"
-    user_csv+="${user_s},"
-    sys_csv+="${sys_s},"
+  hyperfine \
+    --warmup "$WARMUP" \
+    --runs "$REPEATS" \
+    --export-json "$hf_json" \
+    "$filter_cmd"
 
-    printf '[bench] run %d/%d: real=%ss user=%ss sys=%ss\n' "$i" "$REPEATS" "$real_s" "$user_s" "$sys_s"
-  done
+  # hyperfine's JSON export already reports mean/stddev/median/min/max wall
+  # time AND mean user/system CPU time (via getrusage on the child process)
+  # per run, so no separate `/usr/bin/time` wrapping is needed here.
+  python3 - "$hf_json" "$T" "$n_target" <<'PYEOF'
+import json
+import sys
 
-  REAL_CSV="$real_csv" USER_CSV="$user_csv" SYS_CSV="$sys_csv" N_TARGET="$n_target" \
-  awk '
-    function trim_last_comma(s) {
-      sub(/,$/, "", s)
-      return s
-    }
-    function summarize(csv, label,    n, i, arr, tmp, j, k, val, sum, mean, p10_idx, p50_idx, p90_idx) {
-      csv = trim_last_comma(csv)
-      n = split(csv, arr, ",")
-      sum = 0.0
-      for (i = 1; i <= n; i++) {
-        val = arr[i] + 0.0
-        sum += val
-        tmp[i] = val
-      }
-      for (j = 1; j <= n; j++) {
-        for (k = j + 1; k <= n; k++) {
-          if (tmp[j] > tmp[k]) {
-            val = tmp[j]
-            tmp[j] = tmp[k]
-            tmp[k] = val
-          }
-        }
-      }
-      mean = sum / n
-      p10_idx = int((n - 1) * 0.10 + 1.5)
-      p50_idx = int((n - 1) * 0.50 + 1.5)
-      p90_idx = int((n - 1) * 0.90 + 1.5)
-      printf("[bench] %-4s mean=%.4fs p10=%.4fs median=%.4fs p90=%.4fs min=%.4fs max=%.4fs\n",
-             label, mean, tmp[p10_idx], tmp[p50_idx], tmp[p90_idx], tmp[1], tmp[n])
-    }
-    BEGIN {
-      print ""
-      printf("[bench] Summary (NPARTICLES=%s)\n", ENVIRON["N_TARGET"])
-      summarize(ENVIRON["REAL_CSV"], "real")
-      summarize(ENVIRON["USER_CSV"], "user")
-      summarize(ENVIRON["SYS_CSV"], "sys")
-    }
-  '
+hf_json, t, n = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(hf_json) as f:
+    data = json.load(f)
+r = data["results"][0]
+
+print()
+print(f"[bench] Summary (NPARTICLES={n})")
+print(f"[bench] wall   mean={r['mean']:.4f}s stddev={r['stddev']:.4f}s "
+      f"median={r['median']:.4f}s min={r['min']:.4f}s max={r['max']:.4f}s")
+print(f"[bench] user   mean={r['user']:.4f}s")
+print(f"[bench] system mean={r['system']:.4f}s")
+print(f"RESULT,libbi,T={t},N={n},wall_mean_s={r['mean']:.6f},wall_median_s={r['median']:.6f},"
+      f"user_mean_s={r['user']:.6f},sys_mean_s={r['system']:.6f}")
+PYEOF
 
   echo ""
   echo "Done."
   echo "  observations: $DATA_FILE"
   echo "  filter output: $RESULTS_FILE"
+  echo "  hyperfine json: $hf_json"
 }
 
 case "$MODE" in

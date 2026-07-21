@@ -1,0 +1,5 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+RNGPool = "c7fc2d14-d53c-5e81-ac30-66aba9c03525"
+SequentialMonteCarlo = "8c675823-c5d5-50f8-acb2-29aff48dfc1d"
+WeightedSampling = "e5b4febb-f41c-4386-84f4-e73e26fd4cda"

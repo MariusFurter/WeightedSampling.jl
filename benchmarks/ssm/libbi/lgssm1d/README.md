@@ -24,6 +24,14 @@ Model in `LGSSM1D.bi`:
 - `MODE=filter`: run filter only (reuses existing `data/obs.nc`; generates it if missing).
 - `MODE=bench-filter`: run repeated filter-only timing with summary stats.
 
+## Prerequisites
+
+- `libbi` (see repo memory notes for Homebrew quirks).
+- [`hyperfine`](https://github.com/sharkdp/hyperfine) for `MODE=bench-filter` (`brew install hyperfine`).
+  hyperfine reports wall-clock mean/stddev/median/min/max AND mean user/system
+  CPU time per run (via `getrusage`), so no separate `/usr/bin/time` wrapping
+  is needed for CPU-time comparisons against BenchmarkTools-based Julia benchmarks.
+
 ## Quick start
 
 From this directory:
@@ -41,8 +49,13 @@ Outputs:
 ## Useful overrides
 
 ```bash
-T=200 NPARTICLES=5000 DATA_SEED=123 FILTER_SEED=456 ESS_REL=0.5 ./run_pf.sh
+T=200 NPARTICLES=5000 DATA_SEED=123 FILTER_SEED=456 ESS_REL=1.0 ./run_pf.sh
 ```
+
+`ESS_REL` defaults to `1.0` (force resampling at every step, since relative
+ESS is always <= 1), matching the always-resample default used by the
+WeightedSampling and SequentialMonteCarlo.jl benchmarks in `benchmarks/ssm/`
+for a fair comparison.
 
 Filter-only run (no data generation in the timed path):
 

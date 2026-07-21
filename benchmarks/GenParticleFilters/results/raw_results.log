@@ -1,0 +1,20 @@
+model=naive, T=50, N=10000, batch=1
+Elapsed time: 20.665 s
+Allocated: 31846.32 MiB
+Posterior mean (filter): -2.1730, exact: -2.1652
+Log evidence (filter): -75.8806, exact: -75.9621
+RESULT,GenParticleFilters-naive,T=50,N=10000,elapsed_s=20.665330,alloc_mib=31846.3174,post_mean=-2.172958,exact_mean=-2.165223
+model=unfold, T=50, N=10000, batch=1
+Elapsed time: 2.090 s
+Allocated: 4165.37 MiB
+Posterior mean (filter): -2.1730, exact: -2.1652
+Log evidence (filter): -75.8806, exact: -75.9621
+RESULT,GenParticleFilters-unfold,T=50,N=10000,elapsed_s=2.090238,alloc_mib=4165.3673,post_mean=-2.172958,exact_mean=-2.165223
+model=unfold, T=1000, N=10000, batch=1
+Elapsed time: 40.032 s
+Allocated: 87300.13 MiB
+Posterior mean (filter): -1.7135, exact: -1.7191
+Log evidence (filter): -1577.5203, exact: -1577.5287
+RESULT,GenParticleFilters-unfold,T=1000,N=10000,elapsed_s=40.032250,alloc_mib=87300.1329,post_mean=-1.713518,exact_mean=-1.719123
+N=1000, Gen pf_update! (Unfold, ESS-gated resample + mutate + observe): median=3273.125 us, alloc=9361.88 KiB
+RESULT,bench_single_update,N=1000,gen_median_us=3273.1250,gen_alloc_kib=9361.8750

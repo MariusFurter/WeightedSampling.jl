@@ -1,5 +1,7 @@
 # WeightedSampling.jl - TODOs
 
+- [ ] Weight transformers incorreclty implemented.
+
 ## Convenience
 
 ## Composition and recursion of SMC samplers

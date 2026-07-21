@@ -1,0 +1,15 @@
+framework,T,N,metric,value
+GenParticleFilters-naive,50,10000,elapsed_s,20.665330
+GenParticleFilters-naive,50,10000,alloc_mib,31846.3174
+GenParticleFilters-naive,50,10000,post_mean,-2.172958
+GenParticleFilters-naive,50,10000,exact_mean,-2.165223
+GenParticleFilters-unfold,50,10000,elapsed_s,2.090238
+GenParticleFilters-unfold,50,10000,alloc_mib,4165.3673
+GenParticleFilters-unfold,50,10000,post_mean,-2.172958
+GenParticleFilters-unfold,50,10000,exact_mean,-2.165223
+GenParticleFilters-unfold,1000,10000,elapsed_s,40.032250
+GenParticleFilters-unfold,1000,10000,alloc_mib,87300.1329
+GenParticleFilters-unfold,1000,10000,post_mean,-1.713518
+GenParticleFilters-unfold,1000,10000,exact_mean,-1.719123
+bench_single_update,,1000,gen_median_us,3273.1250
+bench_single_update,,1000,gen_alloc_kib,9361.8750
