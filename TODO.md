@@ -1,6 +1,7 @@
 # WeightedSampling.jl - TODOs
 
 - [ ] Weight transformers incorreclty implemented.
+- [ ] autoRW does not accept kwargs besides `diversity`.
 
 ## Convenience
 

@@ -55,7 +55,7 @@ obs_times = 1:T
 
 fig = Figure(; resolution=(350, 250))
 ax = Axis(fig[1, 1];
-    title="Posterior Trajectories",
+    title="Posterior trajectories",
     xlabel="t",
     ylabel="x",
 )
