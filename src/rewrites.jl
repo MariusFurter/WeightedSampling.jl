@@ -70,6 +70,8 @@ model function runs.
 
 # Not supported
 Dotted compound assignments (`x .+= …`) raise a clear error; write `x .= x .+ …`.
+Short-circuit evaluation is not preserved inside vectorized `? :`, `||`, `&&`
+containing a particle variable: both branches/operands are always evaluated.
 """
 
 using MacroTools: MacroTools, @capture
@@ -132,6 +134,11 @@ promoted value of `expr`:
   `x` must already be a registered dynamic-variable family.
 - `[a, b, ...]` (`vect`) containing a particle variable → elementwise combine
   the vectorized args into an array per particle.
+- `cond ? t : f` (ternary, `:if`) → `ifelse.(vectorize(cond), vectorize(t),
+  vectorize(f))`; `a || b`/`a && b` → `vectorize(a) .| vectorize(b)` /
+  `.&`. These lose short-circuit evaluation: BOTH branches/operands are
+  always evaluated (per particle, different branches are taken, so both sides
+  must be computed anyway).
 
 Anything else containing a particle variable (e.g. `(a, b)` tuples) raises an
 error.
@@ -183,6 +190,26 @@ function vectorize(expr, particle_vars::Set{Symbol}, dynamic_families::Set{Symbo
         elseif expr.head == :vect
             vec_args = [vectorize(a, particle_vars, dynamic_families) for a in expr.args]
             return :(broadcast((xs...) -> [xs...], $(vec_args...)))
+        elseif expr.head == :if
+            # Ternary `cond ? t : f` (parses to `:if`). Fused `ifelse.(…)` so
+            # it composes with the surrounding broadcast. Note: `ifelse`
+            # evaluates BOTH branches (no short-circuit) — see the docstring.
+            vec_cond = vectorize(expr.args[1], particle_vars, dynamic_families)
+            vec_t = vectorize(expr.args[2], particle_vars, dynamic_families)
+            vec_f = vectorize(expr.args[3], particle_vars, dynamic_families)
+            return :(ifelse.($vec_cond, $vec_t, $vec_f))
+        elseif expr.head == :||
+            # `a || b`: broadcast bitwise-or (both operands evaluated, no
+            # short-circuit — see the docstring).
+            vec_a = vectorize(expr.args[1], particle_vars, dynamic_families)
+            vec_b = vectorize(expr.args[2], particle_vars, dynamic_families)
+            return :(($vec_a) .| ($vec_b))
+        elseif expr.head == :&&
+            # `a && b`: broadcast bitwise-and (both operands evaluated, no
+            # short-circuit — see the docstring).
+            vec_a = vectorize(expr.args[1], particle_vars, dynamic_families)
+            vec_b = vectorize(expr.args[2], particle_vars, dynamic_families)
+            return :(($vec_a) .& ($vec_b))
         else
             error("Unsupported expression containing a particle variable: $expr")
         end

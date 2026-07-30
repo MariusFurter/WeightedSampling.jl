@@ -167,3 +167,47 @@ end
 @testset "Cond transformer (direct)" begin
     @test cond_unit_test()
 end
+
+"""
+Bayesian-network model exercising vectorized ternary (`fire ? 0.9 : 0.01`)
+and short-circuit `||` (`smoke || lever`) inside distribution arguments.
+"""
+@model function fire_alarm_macro()
+    fire ~ Bernoulli(0.01)
+    smoke ~ Bernoulli(fire ? 0.9 : 0.01)
+    lever ~ Bernoulli(fire ? 0.7 : 0.01)
+    alarm ~ Bernoulli(smoke || lever ? 0.98 : 0.01)
+end
+
+"""
+    ternary_shortcircuit_test()
+
+Forward-sample `fire_alarm_macro` and compare marginal probabilities against
+exact analytic values, confirming vectorized `? :` and `||` broadcast
+per-particle (a scalar collapse would instead give identical values for all
+particles / wrong marginals).
+"""
+function ternary_shortcircuit_test(; N=200_000, atol=0.004)
+    Random.seed!(42)
+    model = fire_alarm_macro()
+    state = SMCState(ColumnStore(N))
+    apply!(model, state)
+
+    p_smoke = mean(getcol(state.store, :smoke))
+    p_lever = mean(getcol(state.store, :lever))
+    p_alarm = mean(getcol(state.store, :alarm))
+
+    # Exact marginals (see fire_alarm network):
+    exact_smoke = 0.01 * 0.9 + 0.99 * 0.01                 # 0.0189
+    exact_lever = 0.01 * 0.7 + 0.99 * 0.01                 # 0.0169
+    p_or = 0.01 * (1 - 0.1 * 0.3) + 0.99 * (1 - 0.99 * 0.99)
+    exact_alarm = p_or * 0.98 + (1 - p_or) * 0.01          # 0.03852
+
+    return isapprox(p_smoke, exact_smoke, atol=atol) &&
+           isapprox(p_lever, exact_lever, atol=atol) &&
+           isapprox(p_alarm, exact_alarm, atol=atol)
+end
+
+@testset "Macro: vectorized ternary and short-circuit ||" begin
+    @test ternary_shortcircuit_test()
+end
