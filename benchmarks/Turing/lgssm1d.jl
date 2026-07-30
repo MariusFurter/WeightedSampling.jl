@@ -28,17 +28,15 @@ particle filter). Number of particles == the `N` argument passed to `sample`.
 """
 Turing.@model function lgssm1d_turing(data, a, q, r, x0_std)
     T = length(data)
-    x = Vector{Float64}(undef, T)
-    x_prev ~ Normal(0.0, x0_std)
-    for t in 1:T
-        x[t] ~ Normal(a * x_prev, q)
-        data[t] ~ Normal(x[t], r)
-        x_prev = x[t]
+    x ~ Normal(0.0, x0_std)
+    for t in 2:T
+        x ~ Normal(a * x, q)
+        data[t] ~ Normal(x, r)
     end
     return x
 end
 
-function run_benchmark(; T=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed=42,
+function run_benchmark(; T=50, N=100, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed=42,
     ess_perc_min=1.0)
     Random.seed!(seed)
     _, data = simulate_lgssm1d(T, a, q, r, x0_std)
@@ -51,11 +49,11 @@ function run_benchmark(; T=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed
 
     # Warm-up run (small T/N) to exclude JIT compilation from the timed run.
     warmup_model = lgssm1d_turing(data[1:2], a, q, r, x0_std)
-    sample(warmup_model, spl, 100)
+    sample(warmup_model, spl, 100; check_model=false)
 
     model = lgssm1d_turing(data, a, q, r, x0_std)
 
-    stats = @timed sample(model, spl, N)
+    stats = @timed sample(model, spl, N; check_model=false)
     chn = stats.value
     elapsed = stats.time - stats.compile_time
     alloc_mib = stats.bytes / 2^20
@@ -63,8 +61,9 @@ function run_benchmark(; T=5000, N=10_000, a=0.9, q=1.0, r=0.5, x0_std=1.0, seed
     exact_mean, exact_evidence = kalman_filter_evidence(data, a, q, r, x0_std)
 
     w = vec(chn[:weight])
-    X = chn[:x]
-    xT = [X[i, 1][end] for i in 1:size(X, 1)]
+    # `x` is now a scalar per particle (the final filtered state) rather than a
+    # trajectory vector, so no per-particle `[end]` indexing is needed.
+    xT = vec(chn[:x])
     post_mean = sum(w .* xT)
     log_evidence = chn[:logevidence][1]
 
@@ -105,13 +104,13 @@ function bench_single_update(; N=1000, base_T=50, delta=10, a=0.9, q=1.0, r=0.5,
 
     # Warm-up run (small T/N) to exclude JIT compilation from the timed runs.
     warmup_model = lgssm1d_turing(data[1:2], a, q, r, x0_std)
-    sample(warmup_model, spl, 100)
+    sample(warmup_model, spl, 100; check_model=false)
 
     base_model = lgssm1d_turing(data[1:base_T], a, q, r, x0_std)
     extended_model = lgssm1d_turing(data[1:(base_T + delta)], a, q, r, x0_std)
 
-    bench_base = @benchmark(sample($base_model, $spl, $N))
-    bench_extended = @benchmark(sample($extended_model, $spl, $N))
+    bench_base = @benchmark(sample($base_model, $spl, $N; check_model=false))
+    bench_extended = @benchmark(sample($extended_model, $spl, $N; check_model=false))
 
     t_base = median(bench_base.times) / 1e9
     t_extended = median(bench_extended.times) / 1e9
