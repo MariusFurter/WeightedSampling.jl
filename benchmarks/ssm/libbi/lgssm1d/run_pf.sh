@@ -28,6 +28,14 @@ CALIBRATION_MIN_PARTICLES="${CALIBRATION_MIN_PARTICLES:-100}"
 CALIBRATION_MAX_PARTICLES="${CALIBRATION_MAX_PARTICLES:-50000000}"
 WARMUP="${WARMUP:-1}"
 
+# MODE=bench-single-update controls (marginal-cost subtraction, see below).
+# libbi's fixed per-process startup overhead is ~0.27s (dwarfing the actual
+# per-step cost, ~40us/step at N=1000), so SINGLE_DELTA must be large (not
+# ~10 like the other frameworks' single-step benches) to get a signal well
+# above hyperfine's run-to-run noise (~5-10ms stddev observed empirically).
+SINGLE_BASE_T="${SINGLE_BASE_T:-1000}"
+SINGLE_DELTA="${SINGLE_DELTA:-5000}"
+
 mkdir -p data results
 
 usage() {
@@ -45,6 +53,12 @@ Modes:
   MODE=data         Generate data only.
   MODE=filter       Run filtering only; generates data if missing.
   MODE=bench-filter Repeated filter-only timing with summary statistics.
+  MODE=bench-single-update
+                    Marginal-cost single filter-step timing (time only, no
+                    allocation info available for a compiled binary): times
+                    full filter runs at SINGLE_BASE_T and
+                    SINGLE_BASE_T+SINGLE_DELTA steps and divides the wall-
+                    time difference by SINGLE_DELTA.
   MODE=help         Show this help and exit.
 
 Core variables:
@@ -71,6 +85,7 @@ Examples:
   MODE=data T=5000 DATA_SEED=42 ./run_pf.sh
   MODE=filter T=5000 NPARTICLES=10000 FILTER_SEED=7 ./run_pf.sh
   MODE=bench-filter T=5000 NPARTICLES=auto TARGET_SECONDS=5 REPEATS=10 WARMUP=1 ./run_pf.sh
+  MODE=bench-single-update NPARTICLES=1000 SINGLE_BASE_T=50 SINGLE_DELTA=10 ./run_pf.sh
 EOF
 }
 
@@ -242,6 +257,62 @@ PYEOF
   echo "  hyperfine json: $hf_json"
 }
 
+# Isolates the (time-only, no allocation info available for a compiled
+# binary) cost of ONE filter update at NPARTICLES particles via the same
+# MARGINAL-COST SUBTRACTION methodology used by benchmarks/Turing/lgssm1d.jl's
+# `bench_single_update` (libbi has no incremental/single-step filter API
+# either): benchmark a full filter run at `SINGLE_BASE_T` steps vs.
+# `SINGLE_BASE_T + SINGLE_DELTA` steps (same data prefix, generated once at
+# the longer length), and divide the wall-time difference by `SINGLE_DELTA`.
+bench_single_update_libbi() {
+  local n="$NPARTICLES"
+  local base_t="$SINGLE_BASE_T"
+  local delta="$SINGLE_DELTA"
+  local extended_t="$((base_t + delta))"
+  local single_data_file="data/obs_bench_single_update.nc"
+  local single_results_file="results/filter_bench_single_update.nc"
+
+  if ! command -v hyperfine >/dev/null 2>&1; then
+    echo "[bench] ERROR: hyperfine not found on PATH. Install via 'brew install hyperfine'." >&2
+    exit 1
+  fi
+
+  echo "[bench-single-update] Generating $extended_t-step data prefix (shared by both timed runs)..."
+  libbi sample \
+    --target joint \
+    --model-file "$MODEL_FILE" \
+    --nsamples 1 \
+    --start-time 0 \
+    --end-time "$extended_t" \
+    --noutputs "$extended_t" \
+    --seed "$DATA_SEED" \
+    --output-file "$single_data_file"
+
+  run_one() {
+    local end_t="$1"
+    local hf_json="/tmp/libbi_pf_single_hyperfine_T${end_t}_N${n}.json"
+    local filter_cmd
+    filter_cmd="$(printf 'libbi filter --filter bootstrap --model-file %q --obs-file %q --start-time 0 --end-time %q --noutputs 0 --nparticles %q --ess-rel %q --resampler systematic --nthreads %q --seed %q --output-file %q' \
+      "$MODEL_FILE" "$single_data_file" "$end_t" "$n" "$ESS_REL" "$NTHREADS" "$FILTER_SEED" "$single_results_file")"
+    hyperfine --warmup "$WARMUP" --runs "$REPEATS" --export-json "$hf_json" "$filter_cmd" >&2
+    python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['results'][0]['mean'])" "$hf_json"
+  }
+
+  echo "[bench-single-update] Timing base_T=$base_t (N=$n)..."
+  local t_base
+  t_base="$(run_one "$base_t")"
+  echo "[bench-single-update] Timing extended_T=$extended_t (N=$n)..."
+  local t_extended
+  t_extended="$(run_one "$extended_t")"
+
+  python3 -c "
+t_base, t_extended, delta, n = $t_base, $t_extended, $delta, $n
+per_step_us = 1e6 * (t_extended - t_base) / delta
+print(f'[bench-single-update] per-step mean: {per_step_us:.4f} us (base={t_base:.4f}s, extended={t_extended:.4f}s)')
+print(f'RESULT,bench_single_update,N={n},libbi_median_us={per_step_us:.4f}')
+"
+}
+
 case "$MODE" in
   all)
     echo "[mode=all] Data generation + filtering"
@@ -271,6 +342,10 @@ case "$MODE" in
   bench-filter)
     echo "[mode=bench-filter] Repeated filtering benchmark"
     benchmark_filter_repeated
+    ;;
+  bench-single-update)
+    echo "[mode=bench-single-update] Marginal-cost single-step benchmark"
+    bench_single_update_libbi
     ;;
   help)
     usage

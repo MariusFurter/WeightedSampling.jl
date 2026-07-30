@@ -1,0 +1,9 @@
+T=1000, N=1000
+Elapsed time: 98.321 s
+Allocated: 144743.80 MiB
+Posterior mean (filter): -1.6987, exact: -1.7191
+Log evidence (filter): -1577.2760, exact: -1577.5287
+RESULT,Turing,T=1000,N=1000,elapsed_s=98.321453,alloc_mib=144743.8048,post_mean=-1.698745,exact_mean=-1.719123
+N=1000, base_T=50, delta=10
+Per-step median: 84591.8126 us, 112698.9391 KiB (base=4.5253s/5421.11 MiB, extended=5.3712s/6521.68 MiB)
+RESULT,bench_single_update,N=1000,turing_median_us=84591.8126,turing_alloc_kib=112698.9391

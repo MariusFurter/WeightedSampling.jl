@@ -27,6 +27,11 @@ time directly comparable to the Julia frameworks.
   `julia --project=benchmarks/ssm/SequentialMonteCarlo -t 1 benchmarks/ssm/SequentialMonteCarlo/lGModel.jl [T] [N]`
   (must run single-threaded — RNGPool requirement).
 - `libbi/lgssm1d/`: LibBi model + `run_pf.sh` runner (see its own README).
+- `Turing/lgssm1d.jl`: Turing.jl `@model`-based implementation, run with
+  `Turing.Inference.SMC` (bootstrap particle filter, forced to resample every
+  step via `SMC(AdvancedPS.resample_systematic, 1.0)`). NOT YET wired into
+  `run_grid.sh`/`parse_results.py` (standalone script only, for now). Run:
+  `julia --project=benchmarks/ssm/Turing benchmarks/ssm/Turing/lgssm1d.jl [T] [N]`
 - `bench_single_update/bench_single_update.jl`: BenchmarkTools-based
   isolation of the cost of ONE mutate+observe+resample update, for
   WeightedSampling and SequentialMonteCarlo.jl (libbi has no equivalent

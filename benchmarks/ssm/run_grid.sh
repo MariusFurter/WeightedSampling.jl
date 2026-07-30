@@ -4,13 +4,19 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-# Two 1D sweeps (vary N at fixed T, vary T at fixed N) rather than a full
-# T x N grid. All overridable from the environment, e.g.
-#   N_SWEEP="1000 5000" T_SWEEP="1000 5000" REPEATS=3 ./run_grid.sh
-T_FIXED="${T_FIXED:-5000}"
-N_SWEEP="${N_SWEEP:-1000 10000 100000}"
-N_FIXED="${N_FIXED:-10000}"
-T_SWEEP="${T_SWEEP:-1000 5000 20000}"
+# Three fixed (T,N) scenarios (not a sweep/grid) for WeightedSampling,
+# SequentialMonteCarlo.jl and libbi:
+#   default:       T=1_000    N=1_000
+#   high particle: T=1_000    N=1_000_000
+#   long time:     T=1_000_000 N=1_000
+# All overridable from the environment, e.g.
+#   DEFAULT_T=2000 DEFAULT_N=2000 ./run_grid.sh
+DEFAULT_T="${DEFAULT_T:-1000}"
+DEFAULT_N="${DEFAULT_N:-1000}"
+HIGH_PARTICLE_T="${HIGH_PARTICLE_T:-1000}"
+HIGH_PARTICLE_N="${HIGH_PARTICLE_N:-1000000}"
+LONG_TIME_T="${LONG_TIME_T:-1000000}"
+LONG_TIME_N="${LONG_TIME_N:-1000}"
 SEED="${SEED:-42}"
 
 # Passed through to libbi's run_pf.sh MODE=bench-filter (hyperfine warmup/runs).
@@ -50,33 +56,30 @@ run_point() {
   ) | tee -a "$RAW_LOG" | grep '^RESULT,' || true
 }
 
-# Track visited (T,N) points to avoid re-running the shared fixed point twice
-# if it happens to coincide between the two sweeps. Plain space-separated
-# list (not an associative array) for compatibility with macOS's default
-# bash 3.2 (no `declare -A` support).
-seen=""
+echo "=== default ==="
+run_point "$DEFAULT_T" "$DEFAULT_N"
+echo "=== high particle ==="
+run_point "$HIGH_PARTICLE_T" "$HIGH_PARTICLE_N"
+echo "=== long time ==="
+run_point "$LONG_TIME_T" "$LONG_TIME_N"
 
-for n in $N_SWEEP; do
-  key="${T_FIXED}:${n}"
-  case " $seen " in
-    *" $key "*) ;;
-    *)
-      run_point "$T_FIXED" "$n"
-      seen="$seen $key"
-      ;;
-  esac
-done
+# Single-update (marginal-cost, one mutate+observe+resample step) benchmarks.
+# WeightedSampling/SequentialMonteCarlo.jl are benched (with allocations) at
+# N=1000,10000,100000 via bench_single_update.jl (unchanged, as before).
+# libbi is benched (time only -- no easy allocation count for a compiled
+# binary) at N=1000 via run_pf.sh's MODE=bench-single-update.
+echo ""
+echo "=== single update ==="
+echo "[grid] WeightedSampling/SequentialMonteCarlo.jl single-update (N=1000,10000,100000)"
+julia --project="$ROOT_DIR/bench_single_update" -t 1 "$ROOT_DIR/bench_single_update/bench_single_update.jl" \
+  | tee -a "$RAW_LOG" | grep '^RESULT,' || true
 
-for t in $T_SWEEP; do
-  key="${t}:${N_FIXED}"
-  case " $seen " in
-    *" $key "*) ;;
-    *)
-      run_point "$t" "$N_FIXED"
-      seen="$seen $key"
-      ;;
-  esac
-done
+echo "[grid] libbi single-update N=1000"
+(
+  cd "$ROOT_DIR/libbi/lgssm1d"
+  MODE=bench-single-update NPARTICLES=1000 DATA_SEED="$SEED" \
+    REPEATS="$REPEATS" WARMUP="$WARMUP" ./run_pf.sh
+) | tee -a "$RAW_LOG" | grep '^RESULT,' || true
 
 python3 "$ROOT_DIR/parse_results.py" "$RAW_LOG" "$CSV_OUT"
 

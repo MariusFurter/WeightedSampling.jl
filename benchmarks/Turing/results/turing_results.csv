@@ -1,0 +1,7 @@
+framework,T,N,metric,value
+Turing,1000,1000,elapsed_s,98.321453
+Turing,1000,1000,alloc_mib,144743.8048
+Turing,1000,1000,post_mean,-1.698745
+Turing,1000,1000,exact_mean,-1.719123
+bench_single_update,,1000,turing_median_us,84591.8126
+bench_single_update,,1000,turing_alloc_kib,112698.9391
