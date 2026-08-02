@@ -19,6 +19,21 @@ const NormalKernel = WeightedKernel(
 )
 
 """
+    NormalWeightKernel
+
+`WeightedKernel` for use with the `Weight` transformer: `sampler = nothing`
+(nothing is sampled) and `weighter` is the (arbitrary) factor added to the
+log-weights — here chosen to be a Normal log-density so `ssm_step_body_weight`
+can be checked against the exact Kalman filter solution, but `Weight` itself
+does not require this factor to be a pdf.
+"""
+const NormalWeightKernel = WeightedKernel(
+    nothing,
+    (μ, σ, x) -> logpdf(Normal(μ, σ), x),
+    (μ, σ, x) -> logpdf(Normal(μ, σ), x),
+)
+
+"""
     rw_init_argfn(state)
 
 Args for the initial sample `x_k(0) ~ Normal(0, 1)`. Scalars wrapped in `Ref`
@@ -150,7 +165,7 @@ value can just be treated as one more (typically constant) argument.
 ssm_step_body_weight(a::Float64, q::Float64, r::Float64, data::Vector{Float64}) =
     t -> Sequence(
         Sample(:x, NormalKernel, state -> (a .* getcol(state.store, :x), Ref(q))),
-        Weight(NormalKernel, state -> (getcol(state.store, :x), Ref(r), Ref(data[t]))),
+        Weight(NormalWeightKernel, state -> (getcol(state.store, :x), Ref(r), Ref(data[t]))),
     )
 
 """

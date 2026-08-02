@@ -228,3 +228,22 @@ struct WeightedKernel{S,W,L}
     weighter::W
     logpdf::L
 end
+
+"""
+    check_weight_kernel(k::WeightedKernel) -> WeightedKernel
+
+Validate that `k` is usable in a `Weight` step: `k.sampler === nothing`, since
+`Weight` never draws or stores a sample (it only adds a log-weight
+contribution — see the `Weight` docstring in `transformers.jl`). Returns `k`
+unchanged (so it can be composed inline where the kernel expression is
+needed); errors otherwise. Called by `@model`-generated code at model
+instantiation time (each time `f` in `_ ~ f(args...)` is resolved), not at
+`apply!`/`score!` time.
+"""
+function check_weight_kernel(k::WeightedKernel)
+    k.sampler === nothing ||
+        error("Weight kernel must have `sampler === nothing` (a `Weight` step never samples); got a kernel " *
+              "with `sampler = $(k.sampler)`. Build a dedicated `WeightedKernel(nothing, weighter, logpdf)` " *
+              "for use with `_ ~ f(...)`.")
+    return k
+end

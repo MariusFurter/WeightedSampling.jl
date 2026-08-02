@@ -28,7 +28,7 @@ end
     x ~ Normal(0, 1)
     for y in data
         x ~ Normal(a * x, q)
-        _ ~ Normal(x, r, y)
+        _ ~ NormalWeight(x, r, y)
     end
 end
 
@@ -57,7 +57,7 @@ end
     end
 end
 
-const normal_kernels = (Normal=NormalKernel,)
+const normal_kernels = (Normal=NormalKernel, NormalWeight=NormalWeightKernel)
 
 """
     random_walk1_macro_correctness_test(; T, N, atol)

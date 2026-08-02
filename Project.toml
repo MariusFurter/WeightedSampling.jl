@@ -1,6 +1,6 @@
 name = "WeightedSampling"
 uuid = "e5b4febb-f41c-4386-84f4-e73e26fd4cda"
-version = "2.0.1-DEV"
+version = "2.0.2-DEV"
 authors = ["Marius Furter"]
 
 [deps]

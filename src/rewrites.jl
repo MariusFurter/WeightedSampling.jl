@@ -508,7 +508,7 @@ function gen_step(stmt, particle_vars::Set{Symbol}, dynamic_families::Set{Symbol
         kexpr = kernel_expr(f, kernels_var)
         if lhs == :_
             argfn = :(state -> ($(map(a -> vectorize(a, particle_vars, dynamic_families), args)...),))
-            return :(WeightedSampling.Weight($kexpr, $argfn))
+            return :(WeightedSampling.Weight(WeightedSampling.check_weight_kernel($kexpr), $argfn))
         elseif lhs isa Symbol
             lhs in dynamic_families &&
                 error("`$lhs` is already a dynamic-variable family (`$lhs" * "{...}`); it cannot also be " *

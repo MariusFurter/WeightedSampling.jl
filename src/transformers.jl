@@ -253,12 +253,17 @@ end
 
 Weighting-without-sampling step `_ ~ f(args)`: adds a log-weight contribution
 to every particle without drawing or storing a sample. Reuses `WeightedKernel`
-for consistency with `Sample`/`Observe`, but `kernel.logpdf` here has a
-different arity: `logpdf(args...) -> logweight` (no trailing sample argument).
-`sampler`/`weighter` are unused (typically `nothing`).
+for consistency with `Sample`/`Observe`, but `kernel.logpdf`/`kernel.weighter`
+here have a different arity: `(args...) -> logweight` (no trailing sample
+argument, since there is no sample). `kernel.sampler` must be `nothing`
+(nothing is ever sampled), and, for correctness, `kernel.weighter` must equal
+`kernel.logpdf` — since no sample is drawn, the weight added by `apply!` and
+the density added by `score!` (used e.g. by `Move`'s accept/reject) must be
+the same function, or the two would silently disagree.
 
 # Fields
-- `kernel::K`: a `WeightedKernel` whose `logpdf` is `(args...) -> logweight`.
+- `kernel::K`: a `WeightedKernel` with `sampler === nothing` and
+  `weighter === logpdf`, both `(args...) -> logweight`.
 - `argfn::F`: closure `state -> args_tuple` computing the (already vectorized)
   kernel arguments.
 """
@@ -270,12 +275,14 @@ end
 """
     apply!(t::Weight, state::SMCState)
 
-Add `t.kernel.logpdf.(args...)` to the log-weights (a fused `.+=` broadcast),
-where `args = t.argfn(state)`.
+Add `t.kernel.weighter.(args...)` to the log-weights (a fused `.+=`
+broadcast), where `args = t.argfn(state)`. Requires `t.kernel.weighter ==
+t.kernel.logpdf` (see the `Weight` docstring) for this to agree with
+[`score!`](@ref).
 """
 function apply!(t::Weight, state::SMCState)
     args = t.argfn(state)
-    state.weights .+= t.kernel.logpdf.(args...)
+    state.weights .+= t.kernel.weighter.(args...)
     state.weights_changed = true
     advance!(state)
     return nothing
@@ -284,7 +291,8 @@ end
 """
     score!(t::Weight, state::SMCState, ctx::ScoreCtx)
 
-Add `t.kernel.logpdf.(args...)` to `ctx.scores`, mirroring `apply!`.
+Add `t.kernel.logpdf.(args...)` to `ctx.scores`, which must equal the
+contribution `apply!` added to the weights (see the `Weight` docstring).
 """
 function score!(t::Weight, state::SMCState, ctx::ScoreCtx)
     args = t.argfn(state)

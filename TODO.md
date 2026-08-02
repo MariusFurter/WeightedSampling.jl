@@ -1,6 +1,5 @@
 # WeightedSampling.jl - TODOs
 
-- [ ] Weight transformers incorreclty implemented.
 - [ ] autoRW does not accept kwargs besides `diversity`.
 - [ ] autoRW can error if covariance is rank deficient.
 
