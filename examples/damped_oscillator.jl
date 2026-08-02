@@ -69,7 +69,7 @@ lines!(ax, t_plot, oscillator.(t_plot, A_true, ω_true, γ_true, ϕ_true),
     color=:crimson, linewidth=2, label="true curve")
 scatter!(ax, t_obs, y_obs, color=:black, markersize=8, label="observations")
 
-save(joinpath(@__DIR__, "plots", "damped_oscillator.png"), fig)
+save(joinpath(@__DIR__, "plots", "damped_oscillator.png"), fig, px_per_unit=6.0)
 fig
 
 # --- Ridge plot of marginal posterior densities, with true values marked ---
@@ -125,5 +125,5 @@ end
 
 ax.yticks = (offsets, string.(first.(params)))
 
-save(joinpath(@__DIR__, "plots", "damped_oscillator_ridge.png"), fig_ridge, px_per_unit=3.0)
+save(joinpath(@__DIR__, "plots", "damped_oscillator_ridge.png"), fig_ridge, px_per_unit=6.0)
 fig_ridge
