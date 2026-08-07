@@ -77,5 +77,5 @@ scatter!(ax, obs_times, obs;
     color=:black, markersize=8, label="Observations")
 
 fig
-save(joinpath(@__DIR__, "plots", "1D_ssm.png"), fig; px_per_unit=3.0)
+save(joinpath(@__DIR__, "plots", "1D_ssm.png"), fig; px_per_unit=6.0)
 
